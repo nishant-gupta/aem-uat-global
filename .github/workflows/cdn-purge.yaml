@@ -65,8 +65,6 @@ jobs:
           echo "FASTLY_API_KEY_KEY=${{ format('{0}_{1}_FASTLY_API_KEY', steps.upperbrand.outputs.uppercase, steps.upperenv.outputs.uppercase ) }}" >>$GITHUB_ENV
       - name: Set BRAND, ENV, MARKET
         id: fastlykey
-        env:
-          FASTLY_KEY: ${{ secrets[env.FASTLY_API_KEY_KEY] }}
         run: |
           echo "BRAND=${{ steps.upperbrand.outputs.uppercase }}" >> $GITHUB_ENV
           echo "ENV=${{ steps.upperenv.outputs.uppercase }}" >> $GITHUB_ENV

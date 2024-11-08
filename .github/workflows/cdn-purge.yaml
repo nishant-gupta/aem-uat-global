@@ -49,17 +49,23 @@ jobs:
         uses: ASzc/change-string-case-action@v6
         with:
           string: ${{steps.formatbrand.outputs.replaced}}
-      - id: step2
-        run: echo ${{ steps.upperbrand.outputs.uppercase }}
+      - id: upperenv
+        uses: ASzc/change-string-case-action@v6
+        with:
+          string: ${{steps.formatenv.outputs.replaced}}
+      - id: uppermarket
+        uses: ASzc/change-string-case-action@v6
+        with:
+          string: ${{steps.formatmarket.outputs.replaced}}
       - name: Format CDN Domain Key
         id: formatcdndomain
         run: |
           echo "CDN_DOMAINS_KEY=${{ format('{0}_{1}_CDN_DOMAINS', steps.formatbrand.outputs.replaced, steps.formatenv.outputs.replaced ) }}" >>$GITHUB_ENV
       - name: Set BRAND, ENV, MARKET
         run: |
-          echo "BRAND=${{ steps.formatbrand.outputs.replaced }}" >> $GITHUB_ENV
-          echo "ENV=${{ steps.formatenv.outputs.replaced }}" >> $GITHUB_ENV
-          echo "MARKET=${{ steps.formatmarket.outputs.replaced }}" >> $GITHUB_ENV
+          echo "BRAND=${{ steps.upperbrand.outputs.uppercase }}" >> $GITHUB_ENV
+          echo "ENV=${{ steps.upperenv.outputs.uppercase }}" >> $GITHUB_ENV
+          echo "MARKET=${{ steps.upperenv.outputs.uppercase }}" >> $GITHUB_ENV
           echo "**${{env.CDN_DOMAINS_KEY}}**"
           echo "CDN_DOMAINS=xxx">>$GITHUB_ENV
       - name: Echo

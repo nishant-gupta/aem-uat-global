@@ -27,7 +27,7 @@ jobs:
         id: formatbrand
         uses: frabert/replace-string-action@v2
         with:
-          pattern: '(a-zA-Z0-9)_(a-zA-Z0-9)_(a-zA-Z0-9)'
+          pattern: '(a-zA-Z0-9)\-(a-zA-Z0-9)\-(a-zA-Z0-9)'
           string: ${{ github.event.client_payload.site }}
           replace-with: '$2'
       - name: Set BRAND

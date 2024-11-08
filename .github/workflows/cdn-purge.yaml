@@ -64,15 +64,12 @@ jobs:
           echo "CDN_DOMAINS_ALL_KEY=${{ format('{0}_{1}_CDN_DOMAINS_ALL', steps.upperbrand.outputs.uppercase, steps.upperenv.outputs.uppercase ) }}" >>$GITHUB_ENV
           echo "FASTLY_API_KEY_KEY=${{ format('{0}_{1}_FASTLY_API_KEY', steps.upperbrand.outputs.uppercase, steps.upperenv.outputs.uppercase ) }}" >>$GITHUB_ENV
       - name: Set BRAND, ENV, MARKET
-        id: fastlykey
-        env:
-          FASTLY_KEY: ${{ secrets[env.FASTLY_API_KEY_KEY] }}
-          BRAND: ${{ steps.upperbrand.outputs.uppercase }}
-          ENV: ${{ steps.upperenv.outputs.uppercase }}
-          MARKET: ${{ steps.uppermarket.outputs.uppercase }}
-          CDN_DOMAINS: ${{vars[env.CDN_DOMAINS_KEY]}}
-          CDN_DOMAINS_ALL: ${{vars[env.CDN_DOMAINS_ALL_KEY]}}
         run: |
+          echo "BRAND=${{ steps.upperbrand.outputs.uppercase }}" >> $GITHUB_ENV
+          echo "ENV=${{ steps.upperenv.outputs.uppercase }}" >> $GITHUB_ENV
+          echo "MARKET=${{ steps.upperenv.outputs.uppercase }}" >> $GITHUB_ENV
+          echo "CDN_DOMAINS=${{vars[env.CDN_DOMAINS_KEY]}}" >> $GITHUB_ENV
+          echo "CDN_DOMAINS_ALL=${{vars[env.CDN_DOMAINS_ALL_KEY]}}" >> $GITHUB_ENV
           echo "###${{ env.FASTLY_KEY }}###"
           echo "###${{ env.BRAND }}###"
           echo "###${{ env.ENV }}###"
@@ -92,6 +89,8 @@ jobs:
           echo "###${{ env.CDN_DOMAINS }}###"
       - name: Purge CDN Markdown
         id: purgecdnmd
+        env:
+          FASTLY_KEY: ${{ secrets[env.FASTLY_API_KEY_KEY] }}
         uses: fjogeleit/http-request-action@v1
         with:
           url: ${{ format('https://api.fastly.com/purge/{0}{1}', fromJSON(env.CDN_DOMAINS)[env.MARKET],  steps.format.outputs.replaced) }}

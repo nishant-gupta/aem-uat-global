@@ -152,7 +152,7 @@ jobs:
           echo "###${{ env.CDN_DOMAINS }}###"
           echo "###${{ env.CDN_PURGE_MARKETS }}###"
   cdn-purgeplaceholders:
-    if: ${{ contains(vars.CDN_PURGE_SITES, github.event.client_payload.site) && endsWith(github.event.client_payload.path, 'placeholders.json') && endsWith(github.event.client_payload.site, 'global') }}
+    if: ${{ endsWith(github.event.client_payload.path, 'placeholders.json') && endsWith(github.event.client_payload.site, 'global') }}
     needs: build-placeholder-matrix
     runs-on: ubuntu-latest
     strategy:

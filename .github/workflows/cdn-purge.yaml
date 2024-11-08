@@ -169,6 +169,7 @@ jobs:
           echo "###${{ needs.build-vars.outputs.CDN_DOMAINS_KEY }}###"
           echo "###${{ needs.build-vars.outputs.CDN_DOMAINS_ALL_KEY }}###"
           echo "###${{ needs.build-vars.outputs.FASTLY_API_KEY_KEY }}###"
+          echo "###${{ fromJSON(vars[needs.build-vars.outputs.CDN_DOMAINS_ALL_KEY]) }}###"
       - name: Format path
         id: format
         uses: frabert/replace-string-action@v2

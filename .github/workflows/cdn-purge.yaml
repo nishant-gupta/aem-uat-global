@@ -57,10 +57,12 @@ jobs:
         uses: ASzc/change-string-case-action@v6
         with:
           string: ${{steps.formatmarket.outputs.replaced}}
-      - name: Format CDN Domain Key
-        id: formatcdndomain
+      - name: Format Keys
+        id: formatkeys
         run: |
           echo "CDN_DOMAINS_KEY=${{ format('{0}_{1}_CDN_DOMAINS', steps.upperbrand.outputs.uppercase, steps.upperenv.outputs.uppercase ) }}" >>$GITHUB_ENV
+          echo "CDN_DOMAINS_ALL_KEY=${{ format('{0}_{1}_CDN_DOMAINS_ALL', steps.upperbrand.outputs.uppercase, steps.upperenv.outputs.uppercase ) }}" >>$GITHUB_ENV
+          echo "FASTLY_API_KEY_KEY=${{ format('{0}_{1}_FASTLY_API_KEY', steps.upperbrand.outputs.uppercase, steps.upperenv.outputs.uppercase ) }}" >>$GITHUB_ENV
       - name: Set BRAND, ENV, MARKET
         run: |
           echo "BRAND=${{ steps.upperbrand.outputs.uppercase }}" >> $GITHUB_ENV
@@ -68,6 +70,8 @@ jobs:
           echo "MARKET=${{ steps.upperenv.outputs.uppercase }}" >> $GITHUB_ENV
           echo "**${{env.CDN_DOMAINS_KEY}}**"
           echo "CDN_DOMAINS=${{vars[env.CDN_DOMAINS_KEY]}}">>$GITHUB_ENV
+          echo "CDN_DOMAINS_ALL=${{vars[env.CDN_DOMAINS_ALL_KEY]}}">>$GITHUB_ENV
+          echo "FASTLY_API_KEY=${{secrets[env.FASTLY_API_KEY_KEY]}}">>$GITHUB_ENV
       - name: Echo
         run: |
           echo "###${{ env.BRAND }}###"
@@ -89,9 +93,9 @@ jobs:
         id: purgecdnmd
         uses: fjogeleit/http-request-action@v1
         with:
-          url: ${{ format('https://api.fastly.com/purge/{0}{1}', fromJSON(vars.CDN_DOMAINS)[github.event.client_payload.site],  steps.format.outputs.replaced) }}
+          url: ${{ format('https://api.fastly.com/purge/{0}{1}', fromJSON(env.CDN_DOMAINS)[github.event.client_payload.site],  steps.format.outputs.replaced) }}
           method: 'POST'
-          customHeaders: '{"Content-Type": "application/json", "Fastly-Key": "${{ secrets.FASTLY_API_KEY }}", "Accept": "application/json"}'
+          customHeaders: '{"Content-Type": "application/json", "Fastly-Key": "${{ env.FASTLY_API_KEY }}", "Accept": "application/json"}'
       - name: Show Response
         run: |
           echo ${{ steps.purgecdnmd.outputs.response }}

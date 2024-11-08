@@ -23,6 +23,19 @@ jobs:
   cdn-purgemd:
     runs-on: ubuntu-latest
     steps:
+      - name: Format path brand
+        id: formatbrand
+        uses: frabert/replace-string-action@v2
+        with:
+          pattern: '(a-zA-Z0-9)_(a-zA-Z0-9)_(a-zA-Z0-9)'
+          string: ${{ github.event.client_payload.site }}
+          replace-with: '$2'
+      - name: Set BRAND
+        run: |
+          echo "BRAND=${{ steps.formatbrand.outputs.replaced }}" >> $GITHUB_ENV
+      - name: Echo
+        run: |
+          echo "###${{ env.BRAND }}###"
       - name: Format path
         id: format
         uses: frabert/replace-string-action@v2

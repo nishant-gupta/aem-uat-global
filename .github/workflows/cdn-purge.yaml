@@ -89,12 +89,12 @@ jobs:
           replace-with: ''
       - name: Echo during CDN Purge
         run: |
-          echo "###${{ env.ENV_VALUE }}###"
+          echo "###${{ env.CDN_DOMAINS }}###"
       - name: Purge CDN Markdown
         id: purgecdnmd
         uses: fjogeleit/http-request-action@v1
         with:
-          url: ${{ format('https://api.fastly.com/purge/{0}{1}', fromJSON(env.CDN_DOMAINS)[github.event.client_payload.site],  steps.format.outputs.replaced) }}
+          url: ${{ format('https://api.fastly.com/purge/{0}{1}', fromJSON(env.CDN_DOMAINS)[env.MARKET],  steps.format.outputs.replaced) }}
           method: 'POST'
           customHeaders: '{"Content-Type": "application/json", "Fastly-Key": "${{ env.FASTLY_API_KEY }}", "Accept": "application/json"}'
       - name: Show Response

@@ -44,16 +44,24 @@ jobs:
           pattern: '([a-zA-Z0-9]*)\-([a-zA-Z0-9]*)\-([a-zA-Z0-9]*)'
           string: ${{ github.event.client_payload.site }}
           replace-with: '$3'
+      - name: Format CDN Domain Key
+        id: formatcdndomain
+        run: |
+          echo "CDN_DOMAINS_KEY=$${{ format('{0}_{1}_CDN_DOMAINS', steps.formatbrand.outputs.replaced, steps.formatenv.outputs.replaced ) }}" >>$GITHUB_ENV
       - name: Set BRAND, ENV, MARKET
         run: |
           echo "BRAND=${{ steps.formatbrand.outputs.replaced }}" >> $GITHUB_ENV
           echo "ENV=${{ steps.formatenv.outputs.replaced }}" >> $GITHUB_ENV
           echo "MARKET=${{ steps.formatmarket.outputs.replaced }}" >> $GITHUB_ENV
+          echo "**${{env.CDN_DOMAINS_KEY}}**"
+          echo "CDN_DOMAINS=${{vars.[env.CDN_DOMAINS_KEY]}}">>$GITHUB_ENV
       - name: Echo
         run: |
           echo "###${{ env.BRAND }}###"
           echo "###${{ env.ENV }}###"
           echo "###${{ env.MARKET }}###"
+          echo "###${{ env.CDN_DOMAINS_KEY }}###"
+          echo "###${{ env.CDN_DOMAINS }}###"
       - name: Format path
         id: format
         uses: frabert/replace-string-action@v2

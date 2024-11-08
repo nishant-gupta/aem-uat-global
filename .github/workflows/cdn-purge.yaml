@@ -23,19 +23,37 @@ jobs:
   cdn-purgemd:
     runs-on: ubuntu-latest
     steps:
-      - name: Format path brand
+      - name: Format brand
         id: formatbrand
         uses: frabert/replace-string-action@v2
         with:
           pattern: '([a-zA-Z0-9]*)\-([a-zA-Z0-9]*)\-([a-zA-Z0-9]*)'
           string: ${{ github.event.client_payload.site }}
+          replace-with: '$1'
+      - name: Format env
+        id: formatenv
+        uses: frabert/replace-string-action@v2
+        with:
+          pattern: '([a-zA-Z0-9]*)\-([a-zA-Z0-9]*)\-([a-zA-Z0-9]*)'
+          string: ${{ github.event.client_payload.site }}
           replace-with: '$2'
-      - name: Set BRAND
+      - name: Format market
+        id: formatmarket
+        uses: frabert/replace-string-action@v2
+        with:
+          pattern: '([a-zA-Z0-9]*)\-([a-zA-Z0-9]*)\-([a-zA-Z0-9]*)'
+          string: ${{ github.event.client_payload.site }}
+          replace-with: '$3'
+      - name: Set BRAND, ENV, MARKET
         run: |
           echo "BRAND=${{ steps.formatbrand.outputs.replaced }}" >> $GITHUB_ENV
+          echo "ENV=${{ steps.formatenv.outputs.replaced }}" >> $GITHUB_ENV
+          echo "MARKET=${{ steps.formatmarket.outputs.replaced }}" >> $GITHUB_ENV
       - name: Echo
         run: |
           echo "###${{ env.BRAND }}###"
+          echo "###${{ env.ENV }}###"
+          echo "###${{ env.MARKET }}###"
       - name: Format path
         id: format
         uses: frabert/replace-string-action@v2

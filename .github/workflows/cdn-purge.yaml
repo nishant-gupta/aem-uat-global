@@ -61,7 +61,7 @@ jobs:
           echo "BRAND=${{ steps.upperbrand.outputs.uppercase }}" >> $GITHUB_ENV
           echo "ENV=${{ steps.upperenv.outputs.uppercase }}" >> $GITHUB_ENV
           echo "MARKET=${{ steps.uppermarket.outputs.uppercase }}" >> $GITHUB_ENV
-          echo "CDN_PURGE_MARKETS=${{ env[CDN_PURGE_MARKETS_KEY] }}" >> $GITHUB_ENV
+          echo "CDN_PURGE_MARKETS=${{ env[env.CDN_PURGE_MARKETS_KEY] }}" >> $GITHUB_ENV
           echo "###${{ env.BRAND }}###"
           echo "###${{ env.ENV }}###"
           echo "###${{ env.MARKET }}###"
@@ -79,7 +79,7 @@ jobs:
         run: |
           echo "###${{ env.CDN_DOMAINS }}###"
       - name: Purge CDN Docs (except Placeholders)
-        if: ${{ contains(vars.CDN_PURGE_MARKETS, env.MARKET)
+        if: ${{ contains(env.CDN_PURGE_MARKETS, env.MARKET)
         id: purgecdn
         env:
           FASTLY_API_KEY: ${{ secrets[env.FASTLY_API_KEY_KEY] }}

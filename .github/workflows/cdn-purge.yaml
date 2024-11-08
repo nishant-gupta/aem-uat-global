@@ -69,7 +69,7 @@ jobs:
           FASTLY_KEY: ${{ secrets[env.FASTLY_API_KEY_KEY] }}
           BRAND: ${{ steps.upperbrand.outputs.uppercase }}
           ENV: ${{ steps.upperenv.outputs.uppercase }}
-          MARKET: ${{ steps.upperenv.outputs.uppercase }}
+          MARKET: ${{ steps.uppermarket.outputs.uppercase }}
           CDN_DOMAINS: ${{vars[env.CDN_DOMAINS_KEY]}}
           CDN_DOMAINS_ALL: ${{vars[env.CDN_DOMAINS_ALL_KEY]}}
         run: |
@@ -79,6 +79,7 @@ jobs:
           echo "###${{ env.MARKET }}###"
           echo "###${{ env.CDN_DOMAINS_KEY }}###"
           echo "###${{ env.CDN_DOMAINS }}###"
+          echo "--${{ fromJSON(env.CDN_DOMAINS)[env.MARKET]}}--"
       - name: Format path
         id: format
         uses: frabert/replace-string-action@v2

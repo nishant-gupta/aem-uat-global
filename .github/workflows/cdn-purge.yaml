@@ -162,11 +162,11 @@ jobs:
       - name: Set BRAND, ENV, MARKET
         run: |
           echo "###${{ needs.build-placeholder-matrix.outputs.BRAND }}###"
-          echo "###${{ needs.build-placeholder-matrix.outputs..ENV }}###"
-          echo "###${{ needs.build-placeholder-matrix.outputs..MARKET }}###"
-          echo "###${{ needs.build-placeholder-matrix.outputs..CDN_DOMAINS_KEY }}###"
-          echo "###${{ needs.build-placeholder-matrix.outputs..CDN_DOMAINS }}###"
-          echo "###${{ needs.build-placeholder-matrix.outputs..CDN_PURGE_MARKETS }}###"
+          echo "###${{ needs.build-placeholder-matrix.outputs.ENV }}###"
+          echo "###${{ needs.build-placeholder-matrix.outputs.MARKET }}###"
+          echo "###${{ needs.build-placeholder-matrix.outputs.CDN_DOMAINS_KEY }}###"
+          echo "###${{ needs.build-placeholder-matrix.outputs.CDN_DOMAINS }}###"
+          echo "###${{ needs.build-placeholder-matrix.outputs.CDN_PURGE_MARKETS }}###"
       - name: Format path
         id: format
         uses: frabert/replace-string-action@v2

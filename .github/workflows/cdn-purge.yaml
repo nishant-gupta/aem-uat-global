@@ -7,20 +7,12 @@ jobs:
   print:
     runs-on: ubuntu-latest
     steps:
-    - name: Echo stuff!
+    - name: Echo Info
       run: |
         echo "Status: ${{ github.event.client_payload.status }}"
         echo "Payload: ${{ toJson(github.event.client_payload) }}"
-        echo ${{ vars.AEM_UAT_CDN_PURGE_SITES}}
-        echo ${{ toJson(vars.AEM_UAT_CDN_DOMAINS) }}
-        echo ":: ${{ github.event.client_payload.site }}>> ${{ fromJSON(vars.AEM_UAT_CDN_DOMAINS)[github.event.client_payload.site]}}::"
-    - name: Set Env (UAT/PROD)
-      run: |
-        echo "ENV_VALUE=${{ contains(github.event.client_payload.site, '_uat_') && 'UAT' || 'PROD' }}" >> $GITHUB_ENV
-    - name: Echo stuff! more
-      run: |
-        echo "###${{ env.ENV_VALUE }}###"
-  cdn-purgemd:
+  cdn-purge:
+    if: ${{ !endsWith(github.event.client_payload.path, 'placeholders.json') }}
     runs-on: ubuntu-latest
     steps:
       - name: Format brand
@@ -63,17 +55,19 @@ jobs:
           echo "CDN_DOMAINS_KEY=${{ format('{0}_{1}_CDN_DOMAINS', steps.upperbrand.outputs.uppercase, steps.upperenv.outputs.uppercase ) }}" >>$GITHUB_ENV
           echo "CDN_DOMAINS_ALL_KEY=${{ format('{0}_{1}_CDN_DOMAINS_ALL', steps.upperbrand.outputs.uppercase, steps.upperenv.outputs.uppercase ) }}" >>$GITHUB_ENV
           echo "FASTLY_API_KEY_KEY=${{ format('{0}_{1}_FASTLY_API_KEY', steps.upperbrand.outputs.uppercase, steps.upperenv.outputs.uppercase ) }}" >>$GITHUB_ENV
+          echo "CDN_PURGE_MARKETS_KEY=${{ format('{0}_{1}_CDN_PURGE_MARKETS', steps.upperbrand.outputs.uppercase, steps.upperenv.outputs.uppercase ) }}" >>$GITHUB_ENV
       - name: Set BRAND, ENV, MARKET
         run: |
           echo "BRAND=${{ steps.upperbrand.outputs.uppercase }}" >> $GITHUB_ENV
           echo "ENV=${{ steps.upperenv.outputs.uppercase }}" >> $GITHUB_ENV
           echo "MARKET=${{ steps.uppermarket.outputs.uppercase }}" >> $GITHUB_ENV
-          echo "###${{ env.FASTLY_KEY }}###"
+          echo "CDN_PURGE_MARKETS=${{ env[CDN_PURGE_MARKETS_KEY] }}" >> $GITHUB_ENV
           echo "###${{ env.BRAND }}###"
           echo "###${{ env.ENV }}###"
           echo "###${{ env.MARKET }}###"
           echo "###${{ env.CDN_DOMAINS_KEY }}###"
           echo "###${{ env.CDN_DOMAINS }}###"
+          echo "###${{ env.CDN_PURGE_MARKETS }}###"
       - name: Format path
         id: format
         uses: frabert/replace-string-action@v2
@@ -84,8 +78,9 @@ jobs:
       - name: Echo during CDN Purge
         run: |
           echo "###${{ env.CDN_DOMAINS }}###"
-      - name: Purge CDN Markdown
-        id: purgecdnmd
+      - name: Purge CDN Docs (except Placeholders)
+        if: ${{ contains(vars.CDN_PURGE_MARKETS, env.MARKET)
+        id: purgecdn
         env:
           FASTLY_API_KEY: ${{ secrets[env.FASTLY_API_KEY_KEY] }}
           CDN_DOMAINS: ${{vars[env.CDN_DOMAINS_KEY]}}
@@ -100,7 +95,7 @@ jobs:
           echo ${{ steps.purgecdnmd.outputs.response }}
           echo ${{ steps.purgecdnmd.outputs.headers }}
           echo ${{ steps.purgecdnmd.outputs.status }}
-  cdn-purgejson:
+  cdn-purgeplaceholders:
     if: ${{ contains(vars.CDN_PURGE_SITES, github.event.client_payload.site) && endsWith(github.event.client_payload.path, 'placeholders.json') && endsWith(github.event.client_payload.site, 'global') }}
     runs-on: ubuntu-latest
     strategy:

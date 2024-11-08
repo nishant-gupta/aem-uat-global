@@ -60,7 +60,7 @@ jobs:
       - name: Format CDN Domain Key
         id: formatcdndomain
         run: |
-          echo "CDN_DOMAINS_KEY=${{ format('{0}_{1}_CDN_DOMAINS', steps.formatbrand.outputs.replaced, steps.formatenv.outputs.replaced ) }}" >>$GITHUB_ENV
+          echo "CDN_DOMAINS_KEY=${{ format('{0}_{1}_CDN_DOMAINS', steps.upperbrand.outputs.uppercase, steps.upperenv.outputs.uppercase ) }}" >>$GITHUB_ENV
       - name: Set BRAND, ENV, MARKET
         run: |
           echo "BRAND=${{ steps.upperbrand.outputs.uppercase }}" >> $GITHUB_ENV

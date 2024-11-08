@@ -61,7 +61,7 @@ jobs:
           echo "BRAND=${{ steps.upperbrand.outputs.uppercase }}" >> $GITHUB_ENV
           echo "ENV=${{ steps.upperenv.outputs.uppercase }}" >> $GITHUB_ENV
           echo "MARKET=${{ steps.uppermarket.outputs.uppercase }}" >> $GITHUB_ENV
-          echo "CDN_PURGE_MARKETS=${{ env[env.CDN_PURGE_MARKETS_KEY] }}" >> $GITHUB_ENV
+          echo "CDN_PURGE_MARKETS=${{ vars[env.CDN_PURGE_MARKETS_KEY] }}" >> $GITHUB_ENV
           echo "###${{ env.BRAND }}###"
           echo "###${{ env.ENV }}###"
           echo "###${{ env.MARKET }}###"

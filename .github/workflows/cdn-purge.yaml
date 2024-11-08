@@ -64,6 +64,9 @@ jobs:
           echo "CDN_DOMAINS_ALL_KEY=${{ format('{0}_{1}_CDN_DOMAINS_ALL', steps.upperbrand.outputs.uppercase, steps.upperenv.outputs.uppercase ) }}" >>$GITHUB_ENV
           echo "FASTLY_API_KEY_KEY=${{ format('{0}_{1}_FASTLY_API_KEY', steps.upperbrand.outputs.uppercase, steps.upperenv.outputs.uppercase ) }}" >>$GITHUB_ENV
       - name: Set BRAND, ENV, MARKET
+        id: fastlykey
+        env:
+          FASTLY_KEY: ${{ secrets[env.FASTLY_API_KEY_KEY] }}
         run: |
           echo "BRAND=${{ steps.upperbrand.outputs.uppercase }}" >> $GITHUB_ENV
           echo "ENV=${{ steps.upperenv.outputs.uppercase }}" >> $GITHUB_ENV
@@ -71,10 +74,6 @@ jobs:
           echo "**${{env.CDN_DOMAINS_KEY}}**"
           echo "CDN_DOMAINS=${{vars[env.CDN_DOMAINS_KEY]}}">>$GITHUB_ENV
           echo "CDN_DOMAINS_ALL=${{vars[env.CDN_DOMAINS_ALL_KEY]}}">>$GITHUB_ENV
-      - name: set fastly key
-        id: fastlykey
-        env:
-          FASTLY_KEY: ${{ secrets[env.FASTLY_API_KEY_KEY] }}
       - name: Echo
         run: |
           echo "###${{ env.BRAND }}###"

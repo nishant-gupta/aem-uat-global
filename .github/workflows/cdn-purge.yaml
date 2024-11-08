@@ -161,7 +161,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        domain: ${{ fromJSON(vars[needs.build-vars.outputs.CDN_DOMAINS_ALL_KEY)] }}
+        domain: ${{ fromJSON(vars[needs.build-vars.outputs.CDN_DOMAINS_ALL_KEY]) }}
     steps:
       - name: Echo Vars
         run: |

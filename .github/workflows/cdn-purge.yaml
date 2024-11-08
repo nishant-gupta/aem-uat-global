@@ -87,7 +87,7 @@ jobs:
       - name: Purge CDN Markdown
         id: purgecdnmd
         env:
-          FASTLY_KEY: ${{ secrets[env.FASTLY_API_KEY_KEY] }}
+          FASTLY_API_KEY: ${{ secrets[env.FASTLY_API_KEY_KEY] }}
           CDN_DOMAINS: ${{vars[env.CDN_DOMAINS_KEY]}}
           CDN_DOMAINS_ALL: ${{vars[env.CDN_DOMAINS_ALL_KEY]}}
         uses: fjogeleit/http-request-action@v1

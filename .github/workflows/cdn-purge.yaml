@@ -79,7 +79,7 @@ jobs:
         run: |
           echo "###${{ env.CDN_DOMAINS }}###"
       - name: Purge CDN Docs (except Placeholders)
-        if: ${{ contains(env.CDN_PURGE_MARKETS, env.MARKET)
+        if: ${{ contains(env.CDN_PURGE_MARKETS, env.MARKET) }}
         id: purgecdn
         env:
           FASTLY_API_KEY: ${{ secrets[env.FASTLY_API_KEY_KEY] }}

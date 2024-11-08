@@ -14,6 +14,8 @@ jobs:
         echo ${{ vars.AEM_UAT_CDN_PURGE_SITES}}
         echo ${{ toJson(vars.AEM_UAT_CDN_DOMAINS) }}
         echo ":: ${{ github.event.client_payload.site }}>> ${{ fromJSON(vars.AEM_UAT_CDN_DOMAINS)[github.event.client_payload.site]}}::"
+    - name: Set Env (UAT/PROD)
+      run: |
         echo "ENV_VALUE=${{ contains(github.event.client_payload.site, '_uat_') && 'UAT' || 'PROD' }}" >> $GITHUB_ENV
     - name: Echo stuff! more
       run: |
@@ -29,6 +31,9 @@ jobs:
           pattern: '\.md'
           string: ${{ github.event.client_payload.path }}
           replace-with: ''
+      - name: Echo during CDN Purge
+        run: |
+          echo "###${{ env.ENV_VALUE }}###"
       - name: Purge CDN Markdown
         id: purgecdnmd
         uses: fjogeleit/http-request-action@v1

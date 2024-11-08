@@ -21,7 +21,6 @@ jobs:
       run: |
         echo "###${{ env.ENV_VALUE }}###"
   cdn-purgemd:
-    if: ${{ contains(vars.CDN_PURGE_SITES, github.event.client_payload.site) && !endsWith(github.event.client_payload.path, 'placeholders.json') && !endsWith(github.event.client_payload.site, 'global') }}
     runs-on: ubuntu-latest
     steps:
       - name: Format path

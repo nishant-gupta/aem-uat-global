@@ -95,10 +95,17 @@ jobs:
           echo ${{ steps.purgecdnmd.outputs.response }}
           echo ${{ steps.purgecdnmd.outputs.headers }}
           echo ${{ steps.purgecdnmd.outputs.status }}
-  build-placeholder-matrix:
+  build-vars:
     runs-on: ubuntu-latest
     outputs:
       BRAND: ${{ steps.setvars.outputs.BRAND }}
+      ENV: ${{ steps.setvars.outputs.ENV }}
+      MARKET: ${{ steps.setvars.outputs.MARKET }}
+      CDN_PURGE_MARKETS: ${{ steps.setvars.outputs.CDN_PURGE_MARKETS }}
+      CDN_DOMAINS_KEY: ${{ steps.setvars.outputs.CDN_DOMAINS_KEY }}
+      CDN_DOMAINS_ALL_KEY: ${{ steps.setvars.outputs.CDN_DOMAINS_ALL_KEY }}
+      FASTLY_API_KEY_KEY: ${{ steps.setvars.outputs.FASTLY_API_KEY_KEY }}
+      matrix: ${{ steps.setvars.outputs.CDN_PURGE_MARKETS }}
     steps:
       - name: Format brand
         id: formatbrand
@@ -137,9 +144,6 @@ jobs:
       - name: Format Keys
         id: formatkeys
         run: |
-          echo "CDN_DOMAINS_KEY=${{ format('{0}_{1}_CDN_DOMAINS', steps.upperbrand.outputs.uppercase, steps.upperenv.outputs.uppercase ) }}" >>$GITHUB_ENV
-          echo "CDN_DOMAINS_ALL_KEY=${{ format('{0}_{1}_CDN_DOMAINS_ALL', steps.upperbrand.outputs.uppercase, steps.upperenv.outputs.uppercase ) }}" >>$GITHUB_ENV
-          echo "FASTLY_API_KEY_KEY=${{ format('{0}_{1}_FASTLY_API_KEY', steps.upperbrand.outputs.uppercase, steps.upperenv.outputs.uppercase ) }}" >>$GITHUB_ENV
           echo "CDN_PURGE_MARKETS_KEY=${{ format('{0}_{1}_CDN_PURGE_MARKETS', steps.upperbrand.outputs.uppercase, steps.upperenv.outputs.uppercase ) }}" >>$GITHUB_ENV
       - name: Set BRAND, ENV, MARKET
         id: setvars
@@ -148,25 +152,23 @@ jobs:
           echo "ENV=${{ steps.upperenv.outputs.uppercase }}" >> $GITHUB_OUTPUT
           echo "MARKET=${{ steps.uppermarket.outputs.uppercase }}" >> $GITHUB_OUTPUT
           echo "CDN_PURGE_MARKETS=${{ vars[env.CDN_PURGE_MARKETS_KEY] }}" >> $GITHUB_OUTPUT
-          echo "###${{ env.BRAND }}###"
-          echo "###${{ env.ENV }}###"
-          echo "###${{ env.MARKET }}###"
-          echo "###${{ env.CDN_DOMAINS_KEY }}###"
-          echo "###${{ env.CDN_DOMAINS }}###"
-          echo "###${{ env.CDN_PURGE_MARKETS }}###"
+          echo "CDN_DOMAINS_KEY=${{ format('{0}_{1}_CDN_DOMAINS', steps.upperbrand.outputs.uppercase, steps.upperenv.outputs.uppercase ) }}" >>$GITHUB_OUTPUT
+          echo "CDN_DOMAINS_ALL_KEY=${{ format('{0}_{1}_CDN_DOMAINS_ALL', steps.upperbrand.outputs.uppercase, steps.upperenv.outputs.uppercase ) }}" >>$GITHUB_OUTPUT
+          echo "FASTLY_API_KEY_KEY=${{ format('{0}_{1}_FASTLY_API_KEY', steps.upperbrand.outputs.uppercase, steps.upperenv.outputs.uppercase ) }}" >>$GITHUB_OUTPUT
   cdn-purgeplaceholders:
     if: ${{ endsWith(github.event.client_payload.path, 'placeholders.json') && endsWith(github.event.client_payload.site, 'global') }}
-    needs: build-placeholder-matrix
+    needs: build-vars
     runs-on: ubuntu-latest
     steps:
-      - name: Set BRAND, ENV, MARKET
+      - name: Echo Vars
         run: |
-          echo "###${{ needs.build-placeholder-matrix.outputs.BRAND }}###"
-          echo "###${{ needs.build-placeholder-matrix.outputs.ENV }}###"
-          echo "###${{ needs.build-placeholder-matrix.outputs.MARKET }}###"
-          echo "###${{ needs.build-placeholder-matrix.outputs.CDN_DOMAINS_KEY }}###"
-          echo "###${{ needs.build-placeholder-matrix.outputs.CDN_DOMAINS }}###"
-          echo "###${{ needs.build-placeholder-matrix.outputs.CDN_PURGE_MARKETS }}###"
+          echo "###${{ needs.build-vars.outputs.BRAND }}###"
+          echo "###${{ needs.build-vars.outputs.ENV }}###"
+          echo "###${{ needs.build-vars.outputs.MARKET }}###"
+          echo "###${{ needs.build-vars.outputs.CDN_PURGE_MARKETS }}###"
+          echo "###${{ needs.build-vars.outputs.CDN_DOMAINS_KEY }}###"
+          echo "###${{ needs.build-vars.outputs.CDN_DOMAINS_ALL_KEY }}###"
+          echo "###${{ needs.build-vars.outputs.FASTLY_API_KEY_KEY }}###"
       - name: Format path
         id: format
         uses: frabert/replace-string-action@v2

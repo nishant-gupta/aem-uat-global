@@ -54,7 +54,7 @@ jobs:
           echo "ENV=${{ steps.formatenv.outputs.replaced }}" >> $GITHUB_ENV
           echo "MARKET=${{ steps.formatmarket.outputs.replaced }}" >> $GITHUB_ENV
           echo "**${{env.CDN_DOMAINS_KEY}}**"
-          echo "CDN_DOMAINS=${{vars.[env.CDN_DOMAINS_KEY]}}">>$GITHUB_ENV
+          echo "CDN_DOMAINS=xxx">>$GITHUB_ENV
       - name: Echo
         run: |
           echo "###${{ env.BRAND }}###"

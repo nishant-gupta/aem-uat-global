@@ -76,7 +76,6 @@ jobs:
           echo "###${{ env.MARKET }}###"
           echo "###${{ env.CDN_DOMAINS_KEY }}###"
           echo "###${{ env.CDN_DOMAINS }}###"
-          echo "--${{ fromJSON(env.CDN_DOMAINS)[env.MARKET]}}--"
       - name: Format path
         id: format
         uses: frabert/replace-string-action@v2
@@ -87,6 +86,7 @@ jobs:
       - name: Echo during CDN Purge
         run: |
           echo "###${{ env.CDN_DOMAINS }}###"
+          echo "--${{ fromJSON(env.CDN_DOMAINS)[env.MARKET]}}--"
       - name: Purge CDN Markdown
         id: purgecdnmd
         env:

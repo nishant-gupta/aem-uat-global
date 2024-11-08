@@ -67,12 +67,13 @@ jobs:
         id: fastlykey
         env:
           FASTLY_KEY: ${{ secrets[env.FASTLY_API_KEY_KEY] }}
-          BRAND1: ${{ steps.upperbrand.outputs.uppercase }}
+          BRAND: ${{ steps.upperbrand.outputs.uppercase }}
+          ENV: ${{ steps.upperenv.outputs.uppercase }}
+          MARKET: ${{ steps.upperenv.outputs.uppercase }}
+          CDN_DOMAINS: ${{vars[env.CDN_DOMAINS_KEY]}}
+          CDN_DOMAINS_ALL: ${{vars[env.CDN_DOMAINS_ALL_KEY]}}
         run: |
-          echo "###${{ env.BRAND }}###"
           echo "###${{ env.FASTLY_KEY }}###"
-      - name: Echo
-        run: |
           echo "###${{ env.BRAND }}###"
           echo "###${{ env.ENV }}###"
           echo "###${{ env.MARKET }}###"

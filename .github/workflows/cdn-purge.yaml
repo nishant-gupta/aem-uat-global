@@ -4,9 +4,6 @@ on:
       - resource-published
       - resource-unpublished
 jobs:
-  env:
-    BRAND: ${{ github.event.client_payload.site }}
-    ENV_VALUE: ${{ contains(github.event.client_payload.site, '_uat_') && 'UAT' || 'PROD' }}
   print:
     runs-on: ubuntu-latest
     steps:
@@ -16,7 +13,8 @@ jobs:
         echo ${{ vars.AEM_UAT_CDN_PURGE_SITES}}
         echo ${{ toJson(vars.AEM_UAT_CDN_DOMAINS) }}
         echo ":: ${{ github.event.client_payload.site }}>> ${{ fromJSON(vars.AEM_UAT_CDN_DOMAINS)[github.event.client_payload.site]}}::"
-        echo ${{ env.ENV_VALUE }}
+        echo "${{ contains(github.event.client_payload.site, '_uat_') && 'UAT' || 'PROD' }}" >> $ENV_VALUE
+        echo $ENV_VALUE
   cdn-purgemd:
     if: ${{ contains(vars.CDN_PURGE_SITES, github.event.client_payload.site) && !endsWith(github.event.client_payload.path, 'placeholders.json') && !endsWith(github.event.client_payload.site, 'global') }}
     runs-on: ubuntu-latest

@@ -71,7 +71,10 @@ jobs:
           echo "**${{env.CDN_DOMAINS_KEY}}**"
           echo "CDN_DOMAINS=${{vars[env.CDN_DOMAINS_KEY]}}">>$GITHUB_ENV
           echo "CDN_DOMAINS_ALL=${{vars[env.CDN_DOMAINS_ALL_KEY]}}">>$GITHUB_ENV
-          echo "FASTLY_API_KEY=${{secrets[env.FASTLY_API_KEY_KEY]}}">>$GITHUB_ENV
+      - name: set fastly key
+        id: fastlykey
+        env:
+          FASTLY_KEY: ${{ secrets[env.FASTLY_API_KEY_KEY] }}
       - name: Echo
         run: |
           echo "###${{ env.BRAND }}###"
@@ -79,6 +82,7 @@ jobs:
           echo "###${{ env.MARKET }}###"
           echo "###${{ env.CDN_DOMAINS_KEY }}###"
           echo "###${{ env.CDN_DOMAINS }}###"
+          echo "###${{ steps.fastlykey.env.FASTLY_KEY }}###"
       - name: Format path
         id: format
         uses: frabert/replace-string-action@v2

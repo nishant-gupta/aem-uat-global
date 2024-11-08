@@ -95,13 +95,78 @@ jobs:
           echo ${{ steps.purgecdnmd.outputs.response }}
           echo ${{ steps.purgecdnmd.outputs.headers }}
           echo ${{ steps.purgecdnmd.outputs.status }}
+  build-placeholder-matrix:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Format brand
+        id: formatbrand
+        uses: frabert/replace-string-action@v2
+        with:
+          pattern: '([a-zA-Z0-9]*)\-([a-zA-Z0-9]*)\-([a-zA-Z0-9]*)'
+          string: ${{ github.event.client_payload.site }}
+          replace-with: '$1'
+      - name: Format env
+        id: formatenv
+        uses: frabert/replace-string-action@v2
+        with:
+          pattern: '([a-zA-Z0-9]*)\-([a-zA-Z0-9]*)\-([a-zA-Z0-9]*)'
+          string: ${{ github.event.client_payload.site }}
+          replace-with: '$2'
+      - name: Format market
+        id: formatmarket
+        uses: frabert/replace-string-action@v2
+        with:
+          pattern: '([a-zA-Z0-9]*)\-([a-zA-Z0-9]*)\-([a-zA-Z0-9]*)'
+          string: ${{ github.event.client_payload.site }}
+          replace-with: '$3'
+      - name: uppercase
+        id: upperbrand
+        uses: ASzc/change-string-case-action@v6
+        with:
+          string: ${{steps.formatbrand.outputs.replaced}}
+      - id: upperenv
+        uses: ASzc/change-string-case-action@v6
+        with:
+          string: ${{steps.formatenv.outputs.replaced}}
+      - id: uppermarket
+        uses: ASzc/change-string-case-action@v6
+        with:
+          string: ${{steps.formatmarket.outputs.replaced}}
+      - name: Format Keys
+        id: formatkeys
+        run: |
+          echo "CDN_DOMAINS_KEY=${{ format('{0}_{1}_CDN_DOMAINS', steps.upperbrand.outputs.uppercase, steps.upperenv.outputs.uppercase ) }}" >>$GITHUB_ENV
+          echo "CDN_DOMAINS_ALL_KEY=${{ format('{0}_{1}_CDN_DOMAINS_ALL', steps.upperbrand.outputs.uppercase, steps.upperenv.outputs.uppercase ) }}" >>$GITHUB_ENV
+          echo "FASTLY_API_KEY_KEY=${{ format('{0}_{1}_FASTLY_API_KEY', steps.upperbrand.outputs.uppercase, steps.upperenv.outputs.uppercase ) }}" >>$GITHUB_ENV
+          echo "CDN_PURGE_MARKETS_KEY=${{ format('{0}_{1}_CDN_PURGE_MARKETS', steps.upperbrand.outputs.uppercase, steps.upperenv.outputs.uppercase ) }}" >>$GITHUB_ENV
+      - name: Set BRAND, ENV, MARKET
+        run: |
+          echo "BRAND=${{ steps.upperbrand.outputs.uppercase }}" >> $GITHUB_ENV
+          echo "ENV=${{ steps.upperenv.outputs.uppercase }}" >> $GITHUB_ENV
+          echo "MARKET=${{ steps.uppermarket.outputs.uppercase }}" >> $GITHUB_ENV
+          echo "CDN_PURGE_MARKETS=${{ vars[env.CDN_PURGE_MARKETS_KEY] }}" >> $GITHUB_ENV
+          echo "###${{ env.BRAND }}###"
+          echo "###${{ env.ENV }}###"
+          echo "###${{ env.MARKET }}###"
+          echo "###${{ env.CDN_DOMAINS_KEY }}###"
+          echo "###${{ env.CDN_DOMAINS }}###"
+          echo "###${{ env.CDN_PURGE_MARKETS }}###"
   cdn-purgeplaceholders:
     if: ${{ contains(vars.CDN_PURGE_SITES, github.event.client_payload.site) && endsWith(github.event.client_payload.path, 'placeholders.json') && endsWith(github.event.client_payload.site, 'global') }}
+    needs: build-placeholder-matrix
     runs-on: ubuntu-latest
     strategy:
         matrix:
             domain: ${{ fromJSON(vars.CDN_DOMAINS_ALL)[github.event.client_payload.site] }}
     steps:
+      - name: Set BRAND, ENV, MARKET
+        run: |
+          echo "###${{ needs.build-placeholder-matrix.outputs.BRAND }}###"
+          echo "###${{ needs.build-placeholder-matrix.outputs..ENV }}###"
+          echo "###${{ needs.build-placeholder-matrix.outputs..MARKET }}###"
+          echo "###${{ needs.build-placeholder-matrix.outputs..CDN_DOMAINS_KEY }}###"
+          echo "###${{ needs.build-placeholder-matrix.outputs..CDN_DOMAINS }}###"
+          echo "###${{ needs.build-placeholder-matrix.outputs..CDN_PURGE_MARKETS }}###"
       - name: Format path
         id: format
         uses: frabert/replace-string-action@v2

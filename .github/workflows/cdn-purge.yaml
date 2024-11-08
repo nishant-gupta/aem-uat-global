@@ -1,0 +1,67 @@
+on: 
+  repository_dispatch:
+    types:
+      - resource-published
+      - resource-unpublished
+jobs:
+  print:
+    runs-on: ubuntu-latest
+    steps:
+    - run: |
+        echo "Status: ${{ github.event.client_payload.status }}"
+        echo "Payload: ${{ toJson(github.event.client_payload) }}"
+        echo ${{ vars.CDN_PURGE_SITES}}
+        echo ${{ toJson(vars.CDN_DOMAINS) }}
+        echo ":: ${{ github.event.client_payload.site }}>> ${{ fromJSON(vars.CDN_DOMAINS)[github.event.client_payload.site]}}::"
+  cdn-purgemd:
+    if: ${{ contains(vars.CDN_PURGE_SITES, github.event.client_payload.site) && !endsWith(github.event.client_payload.path, 'placeholders.json') && !endsWith(github.event.client_payload.site, 'global') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Format path
+        id: format
+        uses: frabert/replace-string-action@v2
+        with:
+          pattern: '\.md'
+          string: ${{ github.event.client_payload.path }}
+          replace-with: ''
+      - name: Purge CDN Markdown
+        id: purgecdnmd
+        uses: fjogeleit/http-request-action@v1
+        with:
+          url: ${{ format('https://api.fastly.com/purge/{0}{1}', fromJSON(vars.CDN_DOMAINS)[github.event.client_payload.site],  steps.format.outputs.replaced) }}
+          method: 'POST'
+          customHeaders: '{"Content-Type": "application/json", "Fastly-Key": "${{ secrets.FASTLY_API_KEY }}", "Accept": "application/json"}'
+      - name: Show Response
+        run: |
+          echo ${{ steps.purgecdnmd.outputs.response }}
+          echo ${{ steps.purgecdnmd.outputs.headers }}
+          echo ${{ steps.purgecdnmd.outputs.status }}
+  cdn-purgejson:
+    if: ${{ contains(vars.CDN_PURGE_SITES, github.event.client_payload.site) && endsWith(github.event.client_payload.path, 'placeholders.json') && endsWith(github.event.client_payload.site, 'global') }}
+    runs-on: ubuntu-latest
+    strategy:
+        matrix:
+            domain: ${{ fromJSON(vars.CDN_DOMAINS_ALL)[github.event.client_payload.site] }}
+    steps:
+      - name: Format path
+        id: format
+        uses: frabert/replace-string-action@v2
+        with:
+          pattern: '\.md'
+          string: ${{ github.event.client_payload.path }}
+          replace-with: ''
+      - name: echo domain
+        run: |
+          echo "Domain: ${{ matrix.domain }}"
+      - name: Purge CDN JSON
+        id: purgecdnjson
+        uses: fjogeleit/http-request-action@v1
+        with:
+          url: ${{ format('https://api.fastly.com/purge/{0}{1}', matrix.domain,  steps.format.outputs.replaced) }}
+          method: 'POST'
+          customHeaders: '{"Content-Type": "application/json", "Fastly-Key": "${{ secrets.FASTLY_API_KEY }}", "Accept": "application/json"}'
+      - name: Show Response
+        run: |
+          echo ${{ steps.purgecdnjson.outputs.response }}
+          echo ${{ steps.purgecdnjson.outputs.headers }}
+          echo ${{ steps.purgecdnjson.outputs.status }}

@@ -10,9 +10,9 @@ jobs:
     - run: |
         echo "Status: ${{ github.event.client_payload.status }}"
         echo "Payload: ${{ toJson(github.event.client_payload) }}"
-        echo ${{ vars.CDN_PURGE_SITES}}
-        echo ${{ toJson(vars.CDN_DOMAINS) }}
-        echo ":: ${{ github.event.client_payload.site }}>> ${{ fromJSON(vars.CDN_DOMAINS)[github.event.client_payload.site]}}::"
+        echo ${{ vars.AEM_UAT_CDN_PURGE_SITES}}
+        echo ${{ toJson(vars.AEM_UAT_CDN_DOMAINS) }}
+        echo ":: ${{ github.event.client_payload.site }}>> ${{ fromJSON(vars.AEM_UAT_CDN_DOMAINS)[github.event.client_payload.site]}}::"
   cdn-purgemd:
     if: ${{ contains(vars.CDN_PURGE_SITES, github.event.client_payload.site) && !endsWith(github.event.client_payload.path, 'placeholders.json') && !endsWith(github.event.client_payload.site, 'global') }}
     runs-on: ubuntu-latest

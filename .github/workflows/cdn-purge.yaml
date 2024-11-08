@@ -44,10 +44,17 @@ jobs:
           pattern: '([a-zA-Z0-9]*)\-([a-zA-Z0-9]*)\-([a-zA-Z0-9]*)'
           string: ${{ github.event.client_payload.site }}
           replace-with: '$3'
+      - name: uppercase
+        id: upperbrand
+        uses: ASzc/change-string-case-action@v6
+        with:
+          string: ${{steps.formatbrand.outputs.replaced}}
+      - id: step2
+        run: echo ${{ steps.upperbrand.outputs.uppercase }}
       - name: Format CDN Domain Key
         id: formatcdndomain
         run: |
-          echo "CDN_DOMAINS_KEY=$${{ format('{0}_{1}_CDN_DOMAINS', steps.formatbrand.outputs.replaced, steps.formatenv.outputs.replaced ) }}" >>$GITHUB_ENV
+          echo "CDN_DOMAINS_KEY=${{ format('{0}_{1}_CDN_DOMAINS', steps.formatbrand.outputs.replaced, steps.formatenv.outputs.replaced ) }}" >>$GITHUB_ENV
       - name: Set BRAND, ENV, MARKET
         run: |
           echo "BRAND=${{ steps.formatbrand.outputs.replaced }}" >> $GITHUB_ENV

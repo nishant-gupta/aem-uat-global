@@ -82,7 +82,6 @@ jobs:
           echo "###${{ env.MARKET }}###"
           echo "###${{ env.CDN_DOMAINS_KEY }}###"
           echo "###${{ env.CDN_DOMAINS }}###"
-          echo "###${{ steps.fastlykey.env.FASTLY_KEY }}###"
       - name: Format path
         id: format
         uses: frabert/replace-string-action@v2

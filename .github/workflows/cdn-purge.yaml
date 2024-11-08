@@ -97,6 +97,8 @@ jobs:
           echo ${{ steps.purgecdnmd.outputs.status }}
   build-placeholder-matrix:
     runs-on: ubuntu-latest
+    outputs:
+      BRAND: ${{ steps.setvars.outputs.BRAND }}
     steps:
       - name: Format brand
         id: formatbrand
@@ -140,6 +142,7 @@ jobs:
           echo "FASTLY_API_KEY_KEY=${{ format('{0}_{1}_FASTLY_API_KEY', steps.upperbrand.outputs.uppercase, steps.upperenv.outputs.uppercase ) }}" >>$GITHUB_ENV
           echo "CDN_PURGE_MARKETS_KEY=${{ format('{0}_{1}_CDN_PURGE_MARKETS', steps.upperbrand.outputs.uppercase, steps.upperenv.outputs.uppercase ) }}" >>$GITHUB_ENV
       - name: Set BRAND, ENV, MARKET
+        id: setvars
         run: |
           echo "BRAND=${{ steps.upperbrand.outputs.uppercase }}" >> $GITHUB_ENV
           echo "ENV=${{ steps.upperenv.outputs.uppercase }}" >> $GITHUB_ENV

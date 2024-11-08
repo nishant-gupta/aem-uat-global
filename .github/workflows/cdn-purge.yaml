@@ -155,9 +155,6 @@ jobs:
     if: ${{ endsWith(github.event.client_payload.path, 'placeholders.json') && endsWith(github.event.client_payload.site, 'global') }}
     needs: build-placeholder-matrix
     runs-on: ubuntu-latest
-    strategy:
-        matrix:
-            domain: ${{ fromJSON(vars.CDN_DOMAINS_ALL)[github.event.client_payload.site] }}
     steps:
       - name: Set BRAND, ENV, MARKET
         run: |

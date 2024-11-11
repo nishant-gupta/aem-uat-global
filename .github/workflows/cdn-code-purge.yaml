@@ -14,7 +14,7 @@ jobs:
   build-vars:
     runs-on: ubuntu-latest
     outputs:
-      ENV: ${{ github.ref_name }}
+      ENV: ${{ steps.upperenv.outputs.uppercase }}
       CDN_PURGE_BRANDS_KEY: ${{ steps.setvars.outputs.CDN_PURGE_BRANDS_KEY }}
     steps:
       - id: upperenv
@@ -52,7 +52,7 @@ jobs:
           FASTLY_SERVICE_ID: ${{ secrets[env.FASTLY_SERVICE_ID_KEY] }}
         uses: fjogeleit/http-request-action@v1
         with:
-          url: ${{ format('https://api.fastly.com/service/{0}/purge/{1}--eds-web--alshaya-axp_code', env.FASTLY_SERVICE_ID, matrix.domain) }}
+          url: ${{ format('https://api.fastly.com/service/{0}/purge/{1}--eds-web--alshaya-axp_code', env.FASTLY_SERVICE_ID, matrix.brand) }}
           method: 'POST'
           customHeaders: '{"Content-Type": "application/json", "Fastly-Key": "${{ secrets[env.FASTLY_API_KEY_KEY] }}", "Accept": "application/json"}'
       - name: Show Response

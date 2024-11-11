@@ -1,5 +1,5 @@
 # AEM UAT GLOBAL TEST
-Your project's description...
+test project
 
 ## Environments
 - Preview: https://main--{repo}--{owner}.aem.page/

@@ -41,10 +41,15 @@ jobs:
         uses: ASzc/change-string-case-action@v6
         with:
           string: ${{matrix.brand}}
+      - name: uppercase
+        id: lowerenv
+        uses: ASzc/change-string-case-action@v6
+        with:
+          string: ${{needs.build-vars.outputs.ENV}}
       - name: Format Keys
         id: formatkeys
         run: |
-          echo "FASTLY_SERVICE_ID_KEY=${{ format('{0}_{1}_FASTLY_SERVICE_ID', matrix.brand, needs.build-vars.outputs.ENV ) }}" >>$GITHUB_ENV
+          echo "FASTLY_SERVICE_ID_KEY=${{ format('{0}_{1}_FASTLY_SERVICE_ID', steps.upperbrand.outputs.uppercase, needs.build-vars.outputs.ENV ) }}" >>$GITHUB_ENV
           echo "FASTLY_API_KEY_KEY=${{ format('{0}_{1}_FASTLY_API_KEY', steps.upperbrand.outputs.uppercase, needs.build-vars.outputs.ENV ) }}" >>$GITHUB_ENV
       - name: Purge CDN Code
         id: purgecdncode
@@ -52,7 +57,7 @@ jobs:
           FASTLY_SERVICE_ID: ${{ secrets[env.FASTLY_SERVICE_ID_KEY] }}
         uses: fjogeleit/http-request-action@v1
         with:
-          url: ${{ format('https://api.fastly.com/service/{0}/purge/{1}--eds-web--alshaya-axp_code', env.FASTLY_SERVICE_ID, matrix.brand) }}
+          url: ${{ format('https://api.fastly.com/service/{0}/purge/{1}--eds-web--alshaya-axp_code', env.FASTLY_SERVICE_ID,  steps.lowerenv.outputs.lowercase) }}
           method: 'POST'
           customHeaders: '{"Content-Type": "application/json", "Fastly-Key": "${{ secrets[env.FASTLY_API_KEY_KEY] }}", "Accept": "application/json"}'
       - name: Show Response

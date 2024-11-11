@@ -15,26 +15,22 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       ENV: ${{ github.ref_name }}
-      CDN_PURGE_BRANDS: ${{ steps.setvars.outputs.CDN_PURGE_BRANDS }}
+      CDN_PURGE_BRANDS_KEY: ${{ steps.setvars.outputs.CDN_PURGE_BRANDS_KEY }}
     steps:
       - id: upperenv
         uses: ASzc/change-string-case-action@v6
         with:
           string: ${{github.ref_name}}
-      - name: Format Keys
-        id: formatkeys
-        run: |
-          echo "CDN_PURGE_BRANDS_KEY=${{ format('{0}_CDN_PURGE_BRANDS', steps.upperenv.outputs.uppercase ) }}" >>$GITHUB_ENV
-      - name: Set BRAND, ENV, MARKET
+      - name: Set CDN Purge Key
         id: setvars
         run: |
-          echo "CDN_PURGE_BRANDS=${{ vars[env.CDN_PURGE_BRANDS_KEY] }}" >> $GITHUB_OUTPUT
+          echo "CDN_PURGE_BRANDS_KEY=${{ format('{0}_CDN_PURGE_BRANDS', steps.upperenv.outputs.uppercase ) }}" >>$GITHUB_OUTPUT
   cdn-purgecode:
     needs: build-vars
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        brand: ${{ fromJSON(needs.build-vars.outputs.CDN_PURGE_BRANDS) }}
+        brand: ${{ fromJSON(vars[needs.build-vars.outputs.CDN_PURGE_BRANDS_KEY]) }}
     steps:
       - name: Echo Vars
         run: |

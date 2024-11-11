@@ -1,0 +1,66 @@
+on: 
+  push:
+    branches:
+      - uat
+      - dev
+jobs:
+  print:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Echo Info
+      run: |
+        echo "Status: ${{ github.ref }}"
+        echo "Payload: ${{ toJson(github) }}"
+  build-vars:
+    runs-on: ubuntu-latest
+    outputs:
+      ENV: ${{ github.ref }}
+      CDN_PURGE_BRANDS: ${{ steps.setvars.outputs.CDN_PURGE_BRANDS }}
+    steps:
+      - id: upperenv
+        uses: ASzc/change-string-case-action@v6
+        with:
+          string: ${{github.ref}}
+      - name: Format Keys
+        id: formatkeys
+        run: |
+          echo "CDN_PURGE_BRANDS_KEY=${{ format('{0}_CDN_PURGE_BRANDS', steps.upperenv.outputs.uppercase ) }}" >>$GITHUB_ENV
+      - name: Set BRAND, ENV, MARKET
+        id: setvars
+        run: |
+          echo "CDN_PURGE_BRANDS=${{ vars[env.CDN_PURGE_BRANDS_KEY] }}" >> $GITHUB_OUTPUT
+  cdn-purgecode:
+    needs: build-vars
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        brand: ${{ fromJSON(needs.build-vars.outputs.CDN_PURGE_BRANDS) }}
+    steps:
+      - name: Echo Vars
+        run: |
+          echo "ENV: ${{ needs.build-vars.outputs.ENV }}"
+          echo "Brand ${{ matrix.brand }}"
+      - name: uppercase
+        id: upperbrand
+        uses: ASzc/change-string-case-action@v6
+        with:
+          string: ${{matrix.brand}}
+      - name: Format Keys
+        id: formatkeys
+        run: |
+          echo "FASTLY_SERVICE_ID_KEY=${{ format('{0}_{1}_FASTLY_SERVICE_ID', matrix.brand, needs.build-vars.outputs.ENV ) }}" >>$GITHUB_ENV
+          echo "FASTLY_API_KEY_KEY=${{ format('{0}_{1}_FASTLY_API_KEY', steps.upperbrand.outputs.uppercase, needs.build-vars.outputs.ENV ) }}" >>$GITHUB_ENV
+      - name: Purge CDN Code
+        id: purgecdncode
+        env:
+          FASTLY_SERVICE_ID: ${{ secrets[env.FASTLY_SERVICE_ID_KEY] }}
+        uses: fjogeleit/http-request-action@v1
+        with:
+          url: ${{ format('https://api.fastly.com/service/{0}/purge/{1}--eds-web--alshaya-axp_code', env.FASTLY_SERVICE_ID, matrix.domain) }}
+          method: 'POST'
+          customHeaders: '{"Content-Type": "application/json", "Fastly-Key": "${{ secrets[env.FASTLY_API_KEY_KEY] }}", "Accept": "application/json"}'
+      - name: Show Response
+        run: |
+          echo ${{ steps.purgecdncode.outputs.response }}
+          echo ${{ steps.purgecdncode.outputs.headers }}
+          echo ${{ steps.purgecdncode.outputs.status }}

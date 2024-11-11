@@ -9,18 +9,18 @@ jobs:
     steps:
     - name: Echo Info
       run: |
-        echo "Status: ${{ github.ref }}"
+        echo "Status: ${{ github.ref_name }}"
         echo "Payload: ${{ toJson(github) }}"
   build-vars:
     runs-on: ubuntu-latest
     outputs:
-      ENV: ${{ github.ref }}
+      ENV: ${{ github.ref_name }}
       CDN_PURGE_BRANDS: ${{ steps.setvars.outputs.CDN_PURGE_BRANDS }}
     steps:
       - id: upperenv
         uses: ASzc/change-string-case-action@v6
         with:
-          string: ${{github.ref}}
+          string: ${{github.ref_name}}
       - name: Format Keys
         id: formatkeys
         run: |

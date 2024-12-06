@@ -4,28 +4,40 @@ on:
     branches:
       - uat
       - dev
+      - stage
+      - pprod
 jobs:
   print:
     runs-on: ubuntu-latest
     steps:
     - name: Echo Info
       run: |
-        echo "Status: ${{ github.ref_name }}"
-        echo "Payload: ${{ toJson(github) }}"
+        echo "Code pushed on branch: ${{ github.ref_name }}"
   build-vars:
     runs-on: ubuntu-latest
     outputs:
       ENV: ${{ steps.upperenv.outputs.uppercase }}
       CDN_PURGE_BRANDS_KEY: ${{ steps.setvars.outputs.CDN_PURGE_BRANDS_KEY }}
+      BRANCH: ${{github.ref_name}}
     steps:
+      - name: set env prod
+        if: ${{ github.ref_name == 'stage' || github.ref_name == 'pprod' }}
+        id: setenvprod
+        run: |
+          echo "ENV=PROD" >>$GITHUB_ENV
       - id: upperenv
         uses: ASzc/change-string-case-action@v6
         with:
           string: ${{github.ref_name}}
+      - name: set env non-prod
+        if: ${{ github.ref_name == 'uat' || github.ref_name == 'dev' }}
+        id: setenvnonprod
+        run: |
+          echo "ENV=${{ steps.upperenv.outputs.uppercase }}" >>$GITHUB_ENV
       - name: Set CDN Purge Key
         id: setvars
         run: |
-          echo "CDN_PURGE_BRANDS_KEY=${{ format('{0}_CDN_PURGE_BRANDS', steps.upperenv.outputs.uppercase ) }}" >>$GITHUB_OUTPUT
+          echo "CDN_PURGE_BRANDS_KEY=${{ format('{0}_CDN_PURGE_BRANDS', ENV ) }}" >>$GITHUB_OUTPUT
   cdn-purgecode:
     needs: build-vars
     runs-on: ubuntu-latest
@@ -37,6 +49,7 @@ jobs:
         run: |
           echo "ENV: ${{ needs.build-vars.outputs.ENV }}"
           echo "Brand ${{ matrix.brand }}"
+          echo "BRANCH: ${{needs.build-vars.outputs.BRANCH}}"
       - name: uppercase
         id: upperbrand
         uses: ASzc/change-string-case-action@v6
@@ -46,7 +59,7 @@ jobs:
         id: lowerenv
         uses: ASzc/change-string-case-action@v6
         with:
-          string: ${{needs.build-vars.outputs.ENV}}
+          string: ${{needs.build-vars.outputs.BRANCH}}
       - name: Format Keys
         id: formatkeys
         run: |

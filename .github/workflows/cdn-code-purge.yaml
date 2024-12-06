@@ -16,7 +16,7 @@ jobs:
   build-vars:
     runs-on: ubuntu-latest
     outputs:
-      ENV: ${{ steps.upperenv.outputs.uppercase }}
+      ENV: ${{ steps.setvars.outputs.ENV }}
       CDN_PURGE_BRANDS_KEY: ${{ steps.setvars.outputs.CDN_PURGE_BRANDS_KEY }}
       BRANCH: ${{github.ref_name}}
     steps:
@@ -37,7 +37,7 @@ jobs:
       - name: Set CDN Purge Key
         id: setvars
         run: |
-          echo ${{ steps.upperbranch.outputs.uppercase}}
+          echo "ENV=${{ ENV }}" >> $GITHUB_OUTPUT
           echo "CDN_PURGE_BRANDS_KEY=${{ format('{0}_CDN_PURGE_BRANDS', steps.upperbranch.outputs.uppercase ) }}" >>$GITHUB_OUTPUT
   cdn-purgecode:
     needs: build-vars

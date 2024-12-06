@@ -25,19 +25,19 @@ jobs:
         id: setenvprod
         run: |
           echo "ENV=PROD" >>$GITHUB_ENV
-      - id: upperenv
-        uses: ASzc/change-string-case-action@v6
-        with:
-          string: ${{github.ref_name}}
       - name: set env non-prod
         if: ${{ github.ref_name == 'uat' || github.ref_name == 'dev' }}
         id: setenvnonprod
         run: |
-          echo "ENV=${{ steps.upperenv.outputs.uppercase }}" >>$GITHUB_ENV
+          echo "ENV=${{ github.ref_name }}" >>$GITHUB_ENV
+      - id: upperbranch
+        uses: ASzc/change-string-case-action@v6
+        with:
+          string: ${{github.ref_name}}
       - name: Set CDN Purge Key
         id: setvars
         run: |
-          echo "CDN_PURGE_BRANDS_KEY=${{ format('{0}_CDN_PURGE_BRANDS', ENV ) }}" >>$GITHUB_OUTPUT
+          echo "CDN_PURGE_BRANDS_KEY=${{ format('{0}_CDN_PURGE_BRANDS', steps.upperbranch.outputs.uppercase ) }}" >>$GITHUB_OUTPUT
   cdn-purgecode:
     needs: build-vars
     runs-on: ubuntu-latest

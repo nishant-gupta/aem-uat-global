@@ -73,12 +73,9 @@ jobs:
           echo "CDN_DOMAINS_ALL_KEY=${{ format('{0}_{1}_CDN_DOMAINS_ALL', steps.upperbrand.outputs.uppercase, steps.upperenv.outputs.uppercase ) }}" >>$GITHUB_OUTPUT
           echo "FASTLY_API_KEY_KEY=${{ format('{0}_{1}_FASTLY_API_KEY', steps.upperbrand.outputs.uppercase, steps.upperenv.outputs.uppercase ) }}" >>$GITHUB_OUTPUT
   cdn-purge:
-    if: ${{ !endsWith(github.event.client_payload.path, 'placeholders.json') && !endsWith(github.event.client_payload.site, 'global1') }}
+    if: ${{ !endsWith(github.event.client_payload.path, 'placeholders.json') && !endsWith(github.event.client_payload.site, 'global') }}
     needs: build-vars
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        domain: ${{ fromJSON(vars[needs.build-vars.outputs.CDN_DOMAINS_KEY])[needs.build-vars.outputs.MARKET] }}
     steps:
       - name: Echo Vars
         run: |
@@ -107,7 +104,7 @@ jobs:
           MARKET: ${{ needs.build-vars.outputs.MARKET }}
         uses: fjogeleit/http-request-action@v1
         with:
-          url: ${{ format('https://api.fastly.com/purge/{0}{1}', matrix.domain,  steps.format.outputs.replaced) }}
+          url: ${{ format('https://api.fastly.com/purge/{0}{1}', fromJSON(env.CDN_DOMAINS)[env.MARKET],  steps.format.outputs.replaced) }}
           method: 'POST'
           customHeaders: '{"Content-Type": "application/json", "Fastly-Key": "${{ env.FASTLY_API_KEY }}", "Accept": "application/json"}'
       - name: Show Response
@@ -145,8 +142,30 @@ jobs:
           url: ${{ format('https://api.fastly.com/purge/{0}{1}', matrix.domain,  github.event.client_payload.path) }}
           method: 'POST'
           customHeaders: '{"Content-Type": "application/json", "Fastly-Key": "${{ env.FASTLY_API_KEY }}", "Accept": "application/json"}'
+      - name: Format placeholder cart json path
+        id: formatcartjson
+        uses: frabert/replace-string-action@v2
+        with:
+          pattern: '\.json'
+          string: ${{ github.event.client_payload.path }}
+          replace-with: '-cart.json'
       - name: Show Response
         run: |
           echo ${{ steps.purgecdnjson.outputs.response }}
           echo ${{ steps.purgecdnjson.outputs.headers }}
           echo ${{ steps.purgecdnjson.outputs.status }}
+      - name: Purge CDN Cart JSON
+        id: purgecdncartjson
+        env:
+          FASTLY_API_KEY: ${{ secrets[needs.build-vars.outputs.FASTLY_API_KEY_KEY] }}
+        uses: fjogeleit/http-request-action@v1
+        with:
+          url: ${{ format('https://api.fastly.com/purge/{0}{1}', matrix.domain,  steps.formatcartjson.outputs.replaced) }}
+          method: 'POST'
+          customHeaders: '{"Content-Type": "application/json", "Fastly-Key": "${{ env.FASTLY_API_KEY }}", "Accept": "application/json"}'
+      - name: Show Response
+        run: |
+          echo ${{ steps.purgecdnjson.outputs.response }}
+          echo ${{ steps.purgecdnjson.outputs.headers }}
+          echo ${{ steps.purgecdnjson.outputs.status }}
+  

@@ -142,6 +142,11 @@ jobs:
           url: ${{ format('https://api.fastly.com/purge/{0}{1}', matrix.domain,  github.event.client_payload.path) }}
           method: 'POST'
           customHeaders: '{"Content-Type": "application/json", "Fastly-Key": "${{ env.FASTLY_API_KEY }}", "Accept": "application/json"}'
+      - name: Show Response
+        run: |
+          echo ${{ steps.purgecdnjson.outputs.response }}
+          echo ${{ steps.purgecdnjson.outputs.headers }}
+          echo ${{ steps.purgecdnjson.outputs.status }}
       - name: Format placeholder cart json path
         id: formatcartjson
         uses: frabert/replace-string-action@v2
@@ -149,11 +154,6 @@ jobs:
           pattern: '\.json'
           string: ${{ github.event.client_payload.path }}
           replace-with: '-cart.json'
-      - name: Show Response
-        run: |
-          echo ${{ steps.purgecdnjson.outputs.response }}
-          echo ${{ steps.purgecdnjson.outputs.headers }}
-          echo ${{ steps.purgecdnjson.outputs.status }}
       - name: Purge CDN Cart JSON
         id: purgecdncartjson
         env:

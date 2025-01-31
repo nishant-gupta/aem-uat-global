@@ -1,12 +1,7 @@
-name: Auto Resolve Conflicts for Specific Files
+name: Auto Resolve Conflicts for Specific Files (Manually Triggered)
 
 on:
-  pull_request:
-    types:
-      - synchronize
-      - opened
-      - reopened
-
+  workflow_dispatch:
 jobs:
   auto-merge:
     runs-on: ubuntu-latest

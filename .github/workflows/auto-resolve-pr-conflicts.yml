@@ -1,0 +1,89 @@
+name: Auto Resolve PR Conflicts
+
+on:
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+
+jobs:
+  check-and-resolve-conflicts:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check PR Mergeability
+        id: check_mergeable
+        run: |
+          PR_URL="${{ github.api_url }}/repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}"
+          MERGEABLE=$(curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" -H "Accept: application/vnd.github.v3+json" "$PR_URL" | jq -r '.mergeable')
+
+          echo "PR mergeable status: $MERGEABLE"
+          
+          if [[ "$MERGEABLE" == "false" ]]; then
+            echo "HAS_CONFLICTS=true" >> $GITHUB_ENV
+          else
+            echo "HAS_CONFLICTS=false" >> $GITHUB_ENV
+          fi
+
+      - name: Checkout PR branch
+        if: env.HAS_CONFLICTS == 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      - name: Configure Git
+        if: env.HAS_CONFLICTS == 'true'
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Fetch target branch
+        if: env.HAS_CONFLICTS == 'true'
+        run: git fetch origin ${{ github.base_ref }}
+
+      - name: Attempt Merge (Check for Conflicts)
+        if: env.HAS_CONFLICTS == 'true'
+        id: merge
+        run: |
+          set +e
+          git merge --no-commit --no-ff origin/${{ github.base_ref }} || echo "MERGE_CONFLICTS=true" >> $GITHUB_ENV
+
+      - name: Resolve Conflicts for Specific Files
+        if: env.HAS_CONFLICTS == 'true' && env.MERGE_CONFLICTS == 'true'
+        run: |
+          FILES_TO_KEEP="config/*.json docs/**"
+          for file in $(git diff --name-only --diff-filter=U); do
+            for pattern in $FILES_TO_KEEP; do
+              if [[ "$file" == $pattern ]]; then
+                echo "Resolving $file using 'ours' strategy"
+                git checkout --ours "$file"
+                git add "$file"
+              fi
+            done
+          done
+
+      - name: Resolve All Conflicts (Optional)
+        if: env.HAS_CONFLICTS == 'true' && env.MERGE_CONFLICTS == 'true'
+        run: |
+          git checkout --ours .
+          git add .
+
+      - name: Commit and Push Resolved Conflicts
+        if: env.HAS_CONFLICTS == 'true' && env.MERGE_CONFLICTS == 'true'
+        run: |
+          git commit -m "Auto-resolved merge conflicts"
+          git push origin HEAD:${{ github.head_ref }}
+
+      - name: Comment on PR
+        if: env.HAS_CONFLICTS == 'true' && env.MERGE_CONFLICTS == 'true'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            github.rest.issues.createComment({
+              issue_number: ${{ github.event.pull_request.number }},
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: "✅ Auto-resolved merge conflicts for this PR."
+            })

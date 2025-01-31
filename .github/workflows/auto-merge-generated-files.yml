@@ -1,7 +1,11 @@
-name: Auto Resolve Conflicts for Specific Files (Manually Triggered)
+name: Auto Resolve PR Conflicts for Specific Files (Manually Triggered)
 
 on:
   workflow_dispatch:
+    inputs:
+      pr_number:
+        description: "Pull Request Number"
+        required: true
 jobs:
   auto-merge:
     runs-on: ubuntu-latest

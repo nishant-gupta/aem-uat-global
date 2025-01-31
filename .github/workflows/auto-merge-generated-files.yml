@@ -1,0 +1,73 @@
+name: Auto Resolve Conflicts for Specific Files
+
+on:
+  pull_request:
+    types:
+      - synchronize
+      - opened
+      - reopened
+
+jobs:
+  auto-merge:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout target branch (main)
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Fetch PR branch
+        run: |
+          git fetch origin ${{ github.head_ref }}
+          git checkout ${{ github.head_ref }}
+
+      - name: Attempt Merge (detect conflicts)
+        run: |
+          git merge --no-commit --no-ff main || true
+          git diff --name-only --diff-filter=U > conflicts.txt || true
+          echo "Conflicted files:"
+          cat conflicts.txt || echo "No conflicts detected."
+
+      - name: Resolve Conflicts for Specific Files
+        run: |
+          FILES_TO_KEEP="styles/_*.css docs/**"
+          for file in $(cat conflicts.txt); do
+            for pattern in $FILES_TO_KEEP; do
+              if [[ "$file" == $pattern ]]; then
+                echo "Resolving $file using 'ours' strategy"
+                git checkout --ours "$file"
+                git add "$file"
+              fi
+            done
+          done
+
+      - name: Commit and Push Resolved Files (if any)
+        run: |
+          if git diff --cached --quiet; then
+            echo "No conflicts to resolve."
+          else
+            git commit -m "Auto-resolved conflicts for selected files"
+            git push origin ${{ github.head_ref }}
+          fi
+
+      - name: Comment on PR
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            let files = fs.existsSync('conflicts.txt') ? fs.readFileSync('conflicts.txt', 'utf8').trim() : '';
+            if (files) {
+              github.rest.issues.createComment({
+                issue_number: ${{ github.event.pull_request.number }},
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: `✅ Auto-resolved conflicts for these files:\n\`\`\`\n${files}\n\`\`\``
+              });
+            }

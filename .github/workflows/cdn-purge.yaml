@@ -132,7 +132,7 @@ jobs:
           echo "CDN_DOMAINS_ALL_KEY: ${{ needs.build-vars.outputs.CDN_DOMAINS_ALL_KEY }}"
           echo "FASTLY_API_KEY_KEY: ${{ needs.build-vars.outputs.FASTLY_API_KEY_KEY }}"
           echo "CDN_DOMAINS_ALL: ${{ vars[needs.build-vars.outputs.CDN_DOMAINS_ALL_KEY] }}"
-          echo "GLOBAL_STATIC_PURGE_DISABLED_KEY: ${{ vars[needs.build-vars.outputs.GLOBAL_STATIC_PURGE_DISABLED_KEY] }}"
+          echo "GLOBAL_STATIC_PURGE_DISABLED_KEY: ${{ needs.build-vars.outputs.GLOBAL_STATIC_PURGE_DISABLED_KEY }}"
       - name: echo domain
         run: |
           echo "Domain: ${{ matrix.domain }}"

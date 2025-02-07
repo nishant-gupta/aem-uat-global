@@ -22,7 +22,7 @@ jobs:
       CDN_DOMAINS_KEY: ${{ steps.setvars.outputs.CDN_DOMAINS_KEY }}
       CDN_DOMAINS_ALL_KEY: ${{ steps.setvars.outputs.CDN_DOMAINS_ALL_KEY }}
       FASTLY_API_KEY_KEY: ${{ steps.setvars.outputs.FASTLY_API_KEY_KEY }}
-      GLOBAL_STATIC_PURGE_DISABLED_KEY: ${{ steps.setvars.outputs.GLOBAL_STATIC_DISABLED_PURGE_KEY }}
+      GLOBAL_STATIC_PURGE_DISABLED_KEY: ${{ steps.setvars.outputs.GLOBAL_STATIC_PURGE_DISABLED_KEY }}
       matrix: ${{ steps.setvars.outputs.CDN_PURGE_MARKETS }}
     steps:
       - name: Format brand
@@ -73,7 +73,7 @@ jobs:
           echo "CDN_DOMAINS_KEY=${{ format('{0}_{1}_CDN_DOMAINS', steps.upperbrand.outputs.uppercase, steps.upperenv.outputs.uppercase ) }}" >>$GITHUB_OUTPUT
           echo "CDN_DOMAINS_ALL_KEY=${{ format('{0}_{1}_CDN_DOMAINS_ALL', steps.upperbrand.outputs.uppercase, steps.upperenv.outputs.uppercase ) }}" >>$GITHUB_OUTPUT
           echo "FASTLY_API_KEY_KEY=${{ format('{0}_{1}_FASTLY_API_KEY', steps.upperbrand.outputs.uppercase, steps.upperenv.outputs.uppercase ) }}" >>$GITHUB_OUTPUT
-          echo "GLOBAL_STATIC_PURGE_DISABLED_KEY=${{ format('{0}_{1}_GLOBAL_STATIC_DISABLED_PURGE_KEY', steps.upperbrand.outputs.uppercase, steps.upperenv.outputs.uppercase ) }}" >>$GITHUB_OUTPUT
+          echo "GLOBAL_STATIC_PURGE_DISABLED_KEY=${{ format('{0}_{1}_GLOBAL_STATIC_PURGE_DISABLED_KEY', steps.upperbrand.outputs.uppercase, steps.upperenv.outputs.uppercase ) }}" >>$GITHUB_OUTPUT
   cdn-purge:
     if: ${{ !endsWith(github.event.client_payload.path, 'placeholders.json') && !endsWith(github.event.client_payload.site, 'global') }}
     needs: build-vars

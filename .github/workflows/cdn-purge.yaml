@@ -173,6 +173,13 @@ jobs:
           echo ${{ steps.purgecdnjson.outputs.response }}
           echo ${{ steps.purgecdnjson.outputs.headers }}
           echo ${{ steps.purgecdnjson.outputs.status }}
+      - name: Format path
+        id: formatmd
+        uses: frabert/replace-string-action@v2
+        with:
+          pattern: '\.md'
+          string: ${{ github.event.client_payload.path }}
+          replace-with: ''
       - name: Purge CDN Global content
         if: ${{ !endsWith(github.event.client_payload.path, 'placeholders.json') }}
         id: purgecdnglobalcontent
@@ -180,7 +187,7 @@ jobs:
           FASTLY_API_KEY: ${{ secrets[needs.build-vars.outputs.FASTLY_API_KEY_KEY] }}
         uses: fjogeleit/http-request-action@v1
         with:
-          url: ${{ format('https://api.fastly.com/purge/{0}{1}', matrix.domain,  github.event.client_payload.path) }}
+          url: ${{ format('https://api.fastly.com/purge/{0}{1}', matrix.domain,  steps.formatmd.outputs.replaced) }}
           method: 'POST'
           customHeaders: '{"Content-Type": "application/json", "Fastly-Key": "${{ env.FASTLY_API_KEY }}", "Accept": "application/json"}'
       - name: Show Response

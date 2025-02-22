@@ -20,18 +20,19 @@
   "homepage": "https://github.com/adobe/aem-boilerplate#readme",
   "devDependencies": {
     "@babel/eslint-parser": "7.25.9",
+    "cypress": "^14.0.3",
     "eslint": "8.57.1",
     "eslint-config-airbnb-base": "15.0.0",
     "eslint-plugin-import": "2.31.0",
     "stylelint": "16.10.0",
-    "stylelint-config-standard": "36.0.1"
-  },
-  "dependencies": {
+    "stylelint-config-standard": "36.0.1",
     "dotenv": "^16.4.7",
     "fs-extra": "^11.3.0",
     "path": "^0.12.7",
     "pixelmatch": "^7.1.0",
     "pngjs": "^7.0.0",
     "resemblejs": "^5.0.0"
+  },
+  "dependencies": {
   }
 }

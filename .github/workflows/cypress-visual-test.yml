@@ -83,7 +83,7 @@ jobs:
         id: cypress
         run: |
           npx cypress run --headless --browser chrome --env Brandcode=${{ matrix.pair.brand }},PageType=${{ matrix.pair.pageType }},URL_1=${{ matrix.pair.before }},URL_2=${{ matrix.pair.after }}
-        continue-on-error: true
+        continue-on-error: false
 
       - name: ✅ Save Test Result
         if: always()
@@ -106,9 +106,10 @@ jobs:
   comment-on-pr:
     needs: cypress-test
     runs-on: ubuntu-latest
+    if: always()
     steps:
       - name: 📁 Download Test Results
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: test-results
 

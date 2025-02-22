@@ -34,23 +34,27 @@ jobs:
       - name: 📝 Extract URLs, Brand & PageType from PR Description
         id: extract
         run: |
-          DESCRIPTION=$(echo "${{ github.event.pull_request.body }}" | jq -R -s 'gsub("\r";"")')  # Normalize line endings
+          DESCRIPTION=$(echo "${{ github.event.pull_request.body }}" | jq -R -s 'gsub("\r";"")')
 
           URL_PAIRS=$(echo "$DESCRIPTION" | awk '
-            BEGIN { brand=""; pageType=""; before=""; after="" }
-            /- Brand:/ { brand=$2 }
-            /- PageType:/ { pageType=$2 }
-            /- Before:/ { before=$2 }
-            /- After:/ { after=$2; 
-                        if (brand != "" && pageType != "" && before != "" && after != "") {
-                            print "{ \"brand\": \"" brand "\", \"pageType\": \"" pageType "\", \"before\": \"" before "\", \"after\": \"" after "\" }";
-                            brand=""; pageType=""; before=""; after="";
-                        }
-                      }
-          ' | jq -s -c)
+            BEGIN { FS=": "; OFS=""; brand=""; pageType=""; before=""; after=""; json="[ "; first=1 }
+            /^- Brand:/ { brand=$2 }
+            /^- PageType:/ { pageType=$2 }
+            /^- Before:/ { before=$2 }
+            /^- After:/ { 
+                after=$2;
+                if (brand && pageType && before && after) {
+                    if (!first) json=json", ";
+                    json=json"{ \"brand\": \""brand"\", \"pageType\": \""pageType"\", \"before\": \""before"\", \"after\": \""after"\" }";
+                    first=0;
+                    brand=""; pageType=""; before=""; after="";
+                }
+            }
+            END { json=json" ]"; print json }
+          ')
 
           # Ensure valid JSON output
-          if [[ -z "$URL_PAIRS" || "$URL_PAIRS" == "[]" ]]; then
+          if [[ -z "$URL_PAIRS" || "$URL_PAIRS" == "[ ]" ]]; then
             URL_PAIRS="[]"
           fi
 
@@ -78,7 +82,7 @@ jobs:
       - name: 🚀 Run Cypress Visual Test
         id: cypress
         run: |
-          npx cypress run --headless --browser chrome --env Brandcode=${{ matrix.pair.brand }},PageType=${{ matrix.pair.pageType }},baseUrl1=${{ matrix.pair.before }},baseUrl2=${{ matrix.pair.after }}
+          npx cypress run --headless --browser chrome --env Brandcode=${{ matrix.pair.brand }},PageType=${{ matrix.pair.pageType }},URL_1=${{ matrix.pair.before }},URL_2=${{ matrix.pair.after }}
         continue-on-error: true
 
       - name: 🖼️ Upload Cypress Screenshots & Diff Images

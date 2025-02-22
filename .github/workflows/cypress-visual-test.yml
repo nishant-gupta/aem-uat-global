@@ -89,7 +89,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: visual-test-${{ matrix.pair.brand }}-${{ matrix.pair.pageType }}-${{ matrix.pair.before }}-vs-${{ matrix.pair.after }}
+          name: visual-test-${{ matrix.pair.brand }}-${{ matrix.pair.pageType }}
           path: cypress/screenshots/
           retention-days: 7
 

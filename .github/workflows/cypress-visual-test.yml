@@ -1,4 +1,4 @@
-name: Cypress Visual Testing
+name: Visual Testing
 
 on:
   workflow_dispatch:  # Allows manual trigger
@@ -68,13 +68,14 @@ jobs:
         run: npm install
 
       - name: 🚀 Run Cypress Visual Test
+        id: cypress-test
         run: |
           npx cypress run --headless --browser chrome
         env:
-          URL_1: ${{ env.BEFORE_URL || github.event.inputs.URL1 || 'https://dev--bbw-qa-global--alshaya-axp.aem.page/en/aura-info' }}
-          URL_2: ${{ env.AFTER_URL || github.event.inputs.URL2 || 'https://dev-fix-84223--bbw-qa-global--alshaya-axp.aem.page/en/aura-info' }}
-          Brandcode: ${{ env.BRAND || github.event.inputs.Brandcode || 'BBW' }}
-          PageType: ${{ env.PAGETYPE || github.event.inputs.PageType || 'Aura' }}
+          URL_1: ${{ env.BEFORE_URL }}
+          URL_2: ${{ env.AFTER_URL }}
+          Brandcode: ${{ env.BRAND }}
+          PageType: ${{ env.PAGETYPE }}
       - name: 🖼️ Upload Cypress Screenshots & Diff Images
         if: always() # Always run this step
         uses: actions/upload-artifact@v4
@@ -87,7 +88,7 @@ jobs:
         uses: mshick/add-pr-comment@v2
         with:
           message: |
-            ✅ **Visual Test Completed**  
+            ${{ steps.cypress-test.outcome == 'success' && '✅ **Visual Test Passed!**' || '❌ **Visual Test Failed!**' }}
             📂 Download Artifacts: [Artifacts](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})  
           repo-token: ${{ secrets.PAT_TOKEN }}
   

@@ -113,6 +113,14 @@ jobs:
         with:
           path: ./artifacts
 
+      - name: 📝 Merge results into a single file
+        run: |
+          echo "[]" > merged-results.json  # Initialize an empty JSON array
+
+          for file in ./artifacts/**/results.json; do
+            echo "Processing: $file"
+            jq -s '.[0] + .[1]' merged-results.json "$file" > temp.json && mv temp.json merged-results.json
+          done
       - name: 📝 Generate PR Comment
         id: generate-comment
         run: |
@@ -134,7 +142,7 @@ jobs:
             COMMENT+="\n- **Before:** [$BEFORE]($BEFORE)"
             COMMENT+="\n- **After:** [$AFTER]($AFTER)"
             COMMENT+="\n- **Result:** $ICON $STATUS\n"
-          done < results.json
+          done < merged-results.json
 
           echo "$COMMENT" > comment.md
 

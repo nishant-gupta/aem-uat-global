@@ -76,12 +76,14 @@ jobs:
           Brandcode: ${{ env.BRAND || github.event.inputs.Brandcode || 'BBW' }}
           PageType: ${{ env.PAGETYPE || github.event.inputs.PageType || 'Aura' }}
       - name: 🖼️ Upload Cypress Screenshots & Diff Images
+        if: always() # Always run this step
         uses: actions/upload-artifact@v4
         with:
           name: visual-test-artifacts
           path: cypress/screenshots/
           retention-days: 7  # Keep artifacts for 7 days
       - name: 📝 Comment on PR with Artifact Link
+        if: always() # Always run this step
         uses: mshick/add-pr-comment@v2
         with:
           message: |

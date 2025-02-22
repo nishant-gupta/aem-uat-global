@@ -24,71 +24,73 @@ on:
       - main
 
 jobs:
-  cypress-test:
+  extract-urls:
     runs-on: ubuntu-latest
-
+    outputs:
+      urls: ${{ steps.extract.outputs.urls }}
     steps:
       - name: 📥 Checkout Repository
         uses: actions/checkout@v4
 
-      - name: 📜 Extract URLs from PR Description
-        id: extract_urls
+      - name: 📝 Extract URLs, Brand & PageType from PR Description
+        id: extract
         run: |
-          PR_BODY="${{ github.event.pull_request.body }}"
-
-          echo "PR Description: $PR_BODY"
-
-          BEFORE_URL=$(echo "$PR_BODY" | grep -oP '(?<=Before: )https?://[^\s]+')
-          AFTER_URL=$(echo "$PR_BODY" | grep -oP '(?<=After: )https?://[^\s]+')
-          BRAND=$(echo "$PR_BODY" | grep -oP '(?<=Brand: )[^\s]+')
-          PAGETYPE=$(echo "$PR_BODY" | grep -oP '(?<=PageType: )[^\s]+')
-
-          if [[ -z "$BEFORE_URL" || -z "$AFTER_URL" ]]; then
-            echo "🚨 URLs not found in PR description! Skipping test."
-            echo "skip_test=true" >> $GITHUB_ENV
-          else
-            echo "🎯 Extracted BEFORE_URL: $BEFORE_URL"
-            echo "🎯 Extracted AFTER_URL: $AFTER_URL"
-            echo "BEFORE_URL=$BEFORE_URL" >> $GITHUB_ENV
-            echo "AFTER_URL=$AFTER_URL" >> $GITHUB_ENV
-            echo "BRAND=$BRAND" >> $GITHUB_ENV
-            echo "PAGETYPE=$PAGETYPE" >> $GITHUB_ENV
-          fi
-
-      - name: 🚫 Skip if URLs are missing
-        if: env.skip_test == 'true'
-        run: echo "Skipping test since URLs are missing."
-
-      - name: 🛠️ Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 18
-
-      - name: 📦 Install Dependencies
-        run: npm install
-
-      - name: 🚀 Run Cypress Visual Test
-        id: cypress-test
-        run: |
-          npx cypress run --headless --browser chrome
-        env:
-          URL_1: ${{ env.BEFORE_URL }}
-          URL_2: ${{ env.AFTER_URL }}
-          Brandcode: ${{ env.BRAND }}
-          PageType: ${{ env.PAGETYPE }}
-      - name: 🖼️ Upload Cypress Screenshots & Diff Images
-        if: always() # Always run this step
-        uses: actions/upload-artifact@v4
-        with:
-          name: visual-test-artifacts
-          path: cypress/screenshots/
-          retention-days: 7  # Keep artifacts for 7 days
-      - name: 📝 Comment on PR with Artifact Link
-        if: always() # Always run this step
-        uses: mshick/add-pr-comment@v2
-        with:
-          message: |
-            ${{ steps.cypress-test.outcome == 'success' && '✅ **Visual Test Passed!**' || '❌ **Visual Test Failed!**' }}
-            📂 Download Artifacts: [Artifacts](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})  
-          repo-token: ${{ secrets.PAT_TOKEN }}
-  
+          DESCRIPTION="${{ github.event.pull_request.body }}"
+          URL_PAIRS=$(echo "$DESCRIPTION" | awk '/^- Brand:/ { brand=$NF } 
+                                                     /^- PageType:/ { pageType=$NF } 
+                                                     /^- Before:/ { before=$NF } 
+                                                     /^- After:/ { after=$NF; print "{ \"brand\": \"" brand "\", \"pageType\": \"" pageType "\", \"before\": \"" before "\", \"after\": \"" after "\" }" }' | jq -s -c)
+          echo "Extracted URL Pairs: $URL_PAIRS"
+          echo "urls=$URL_PAIRS" >> "$GITHUB_OUTPUT"
+          cypress-test:
+            needs: extract-urls
+            runs-on: ubuntu-latest
+            strategy:
+              matrix:
+                pair: ${{ fromJson(needs.extract-urls.outputs.urls) }}
+            steps:
+              - name: 📥 Checkout Repository
+                uses: actions/checkout@v4
+        
+              - name: 🛠️ Setup Node.js
+                uses: actions/setup-node@v4
+                with:
+                  node-version: 18
+        
+              - name: 📦 Install Dependencies
+                run: npm install
+        
+              - name: 🚀 Run Cypress Visual Test
+                id: cypress
+                run: |
+                  npx cypress run --headless --browser chrome --env Brandcode=${{ matrix.pair.brand }},PageType=${{ matrix.pair.pageType }},URL_1=${{ matrix.pair.before }},URL_2=${{ matrix.pair.after }}
+                continue-on-error: true
+        
+              - name: 🖼️ Upload Cypress Screenshots & Diff Images
+                if: always()
+                uses: actions/upload-artifact@v4
+                with:
+                  name: visual-test-${{ matrix.pair.brand }}-${{ matrix.pair.pageType }}-${{ matrix.pair.before }}-vs-${{ matrix.pair.after }}
+                  path: cypress/screenshots/
+                  retention-days: 7
+        
+              - name: 📝 Collect Test Results
+                id: test-result
+                run: echo "result=${{ steps.cypress.outcome == 'success' && '✅ Passed' || '❌ Failed' }}" >> "$GITHUB_ENV"
+        
+          comment-on-pr:
+            needs: cypress-test
+            runs-on: ubuntu-latest
+            steps:
+              - name: 📝 Post Test Summary on PR
+                uses: mshick/add-pr-comment@v2
+                with:
+                  message: |
+                    # 🖼️ **Visual Test Results**
+                    **Results:**
+                    - **Brand:** `${{ matrix.pair.brand }}`
+                    - **Page Type:** `${{ matrix.pair.pageType }}`
+                    - **Before:** `${{ matrix.pair.before }}`
+                    - **After:** `${{ matrix.pair.after }}`
+                    - **Result:** `${{ env.result }}`
+                  repo-token: ${{ secrets.PAT_TOKEN }}

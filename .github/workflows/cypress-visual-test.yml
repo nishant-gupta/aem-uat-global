@@ -79,11 +79,19 @@ jobs:
       - name: 📦 Install Dependencies
         run: npm install
 
-      - name: 🚀 Run Cypress Visual Test
+      - name: 🚀 Run Cypress Tests
         id: cypress
+        uses: cypress-io/github-action@v6
+        with:
+          browser: chrome
+          headed: false # Run in headless mode
+          config: screenshotsFolder=cypress/screenshots
+          env: Brandcode=${{ matrix.pair.brand }},PageType=${{ matrix.pair.pageType }},URL_1=${{ matrix.pair.before }},URL_2=${{ matrix.pair.after }}
+        continue-on-error: false # Ensures workflow fails on test failures
+
+      - name: ✅ Save Test Result
         run: |
-          npx cypress run --headless --browser chrome --env Brandcode=${{ matrix.pair.brand }},PageType=${{ matrix.pair.pageType }},URL_1=${{ matrix.pair.before }},URL_2=${{ matrix.pair.after }}
-        continue-on-error: true
+          echo "{ \"brand\": \"${{ matrix.pair.brand }}\", \"pageType\": \"${{ matrix.pair.pageType }}\", \"before\": \"${{ matrix.pair.before }}\", \"after\": \"${{ matrix.pair.after }}\", \"status\": \"${{ job.status }}\" }" >> results.json
 
       - name: 🖼️ Upload Cypress Screenshots & Diff Images
         if: always()
@@ -101,15 +109,38 @@ jobs:
     needs: cypress-test
     runs-on: ubuntu-latest
     steps:
-      - name: 📝 Post Test Summary on PR
+      - name: 📁 Download Test Results
+        uses: actions/download-artifact@v3
+        with:
+          name: test-results
+
+      - name: 📝 Generate PR Comment
+        id: generate-comment
+        run: |
+          COMMENT="### **Visual Test Results**\n"
+          while read -r line; do
+            BRAND=$(echo $line | jq -r '.brand')
+            PAGE_TYPE=$(echo $line | jq -r '.pageType')
+            BEFORE=$(echo $line | jq -r '.before')
+            AFTER=$(echo $line | jq -r '.after')
+            STATUS=$(echo $line | jq -r '.status')
+
+            ICON="✅"
+            if [[ "$STATUS" != "success" ]]; then
+              ICON="❌"
+            fi
+
+            COMMENT+="\n- **Brand:** $BRAND"
+            COMMENT+="\n- **Page Type:** $PAGE_TYPE"
+            COMMENT+="\n- **Before:** [$BEFORE]($BEFORE)"
+            COMMENT+="\n- **After:** [$AFTER]($AFTER)"
+            COMMENT+="\n- **Result:** $ICON $STATUS\n"
+          done < results.json
+
+          echo "$COMMENT" > comment.md
+
+      - name: 💬 Post PR Comment
         uses: mshick/add-pr-comment@v2
         with:
-          message: |
-            # 🖼️ **Visual Test Results**
-            **Results:**
-            - **Brand:** `${{ matrix.pair.brand }}`
-            - **Page Type:** `${{ matrix.pair.pageType }}`
-            - **Before:** `${{ matrix.pair.before }}`
-            - **After:** `${{ matrix.pair.after }}`
-            - **Result:** `${{ env.result }}`
+          message-path: comment.md
           repo-token: ${{ secrets.PAT_TOKEN }}

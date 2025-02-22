@@ -83,9 +83,10 @@ jobs:
         id: cypress
         run: |
           npx cypress run --headless --browser chrome --env Brandcode=${{ matrix.pair.brand }},PageType=${{ matrix.pair.pageType }},URL_1=${{ matrix.pair.before }},URL_2=${{ matrix.pair.after }}
-        continue-on-error: false
+        continue-on-error: true
 
       - name: ✅ Save Test Result
+        if: always()
         run: |
           echo "{ \"brand\": \"${{ matrix.pair.brand }}\", \"pageType\": \"${{ matrix.pair.pageType }}\", \"before\": \"${{ matrix.pair.before }}\", \"after\": \"${{ matrix.pair.after }}\", \"status\": \"${{ job.status }}\" }" >> results.json
 
@@ -98,6 +99,7 @@ jobs:
           retention-days: 7
 
       - name: 📝 Collect Test Results
+        if: always()
         id: test-result
         run: echo "result=${{ steps.cypress.outcome == 'success' && '✅ Passed' || '❌ Failed' }}" >> "$GITHUB_ENV"
 

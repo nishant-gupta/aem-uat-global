@@ -89,5 +89,5 @@ jobs:
           message: |
             ✅ **Visual Test Completed**  
             📂 Download Artifacts: [Artifacts](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})  
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          repo-token: ${{ secrets.PAT_TOKEN }}
   

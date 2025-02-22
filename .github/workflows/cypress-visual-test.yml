@@ -31,18 +31,24 @@ jobs:
     steps:
       - name: 📥 Checkout Repository
         uses: actions/checkout@v4
-
       - name: 📝 Extract URLs, Brand & PageType from PR Description
         id: extract
         run: |
-          DESCRIPTION=$(echo "${{ github.event.pull_request.body }}" | sed 's/"/\\"/g' | jq -R -s '.')
+          DESCRIPTION=$(echo "${{ github.event.pull_request.body }}" | jq -R -s 'gsub("\r";"")')  # Normalize line endings
+
           URL_PAIRS=$(echo "$DESCRIPTION" | awk '
-            /- Brand:/ { brand=$NF }
-            /- PageType:/ { pageType=$NF }
-            /- Before:/ { before=$NF }
-            /- After:/ { after=$NF; print "{ \"brand\": \"" brand "\", \"pageType\": \"" pageType "\", \"before\": \"" before "\", \"after\": \"" after "\" }" }'
+            BEGIN { brand=""; pageType=""; before=""; after="" }
+            /- Brand:/ { brand=$2 }
+            /- PageType:/ { pageType=$2 }
+            /- Before:/ { before=$2 }
+            /- After:/ { after=$2; 
+                        if (brand != "" && pageType != "" && before != "" && after != "") {
+                            print "{ \"brand\": \"" brand "\", \"pageType\": \"" pageType "\", \"before\": \"" before "\", \"after\": \"" after "\" }";
+                            brand=""; pageType=""; before=""; after="";
+                        }
+                      }
           ' | jq -s -c)
-          
+
           # Ensure valid JSON output
           if [[ -z "$URL_PAIRS" || "$URL_PAIRS" == "[]" ]]; then
             URL_PAIRS="[]"
@@ -50,6 +56,7 @@ jobs:
 
           echo "Extracted URL Pairs: $URL_PAIRS"
           echo "urls=$URL_PAIRS" >> "$GITHUB_OUTPUT"
+
   cypress-test:
     needs: extract-urls
     runs-on: ubuntu-latest

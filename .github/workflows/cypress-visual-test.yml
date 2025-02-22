@@ -35,6 +35,8 @@ jobs:
           echo "PR Description: $PR_BODY"
 
           BEFORE_URL=$(echo "$PR_BODY" | grep -oP '(?<=Before: )https?://[^\s]+')
+
+          echo "BEFORE_URL: $BEFORE_URL"
           AFTER_URL=$(echo "$PR_BODY" | grep -oP '(?<=After: )https?://[^\s]+')
           BRAND=$(echo "$PR_BODY" | grep -oP '(?<=Brand: )https?://[^\s]+')
           PAGETYPE=$(echo "$PR_BODY" | grep -oP '(?<=PageType: )https?://[^\s]+')

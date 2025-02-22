@@ -34,14 +34,14 @@ jobs:
       - name: 📝 Extract URLs, Brand & PageType from PR Description
         id: extract
         run: |
-          DESCRIPTION=$(echo "${{ github.event.pull_request.body }}" | jq -R -s 'gsub("\r";"")')
+          DESCRIPTION=$(echo "${{ github.event.pull_request.body }}" | tr -d '\r')
 
           URL_PAIRS=$(echo "$DESCRIPTION" | awk '
             BEGIN { FS=": "; OFS=""; brand=""; pageType=""; before=""; after=""; json="[ "; first=1 }
-            /^- Brand:/ { brand=$2 }
-            /^- PageType:/ { pageType=$2 }
-            /^- Before:/ { before=$2 }
-            /^- After:/ { 
+            /^\s*- Brand:/ { brand=$2 }
+            /^\s*- PageType:/ { pageType=$2 }
+            /^\s*- Before:/ { before=$2 }
+            /^\s*- After:/ { 
                 after=$2;
                 if (brand && pageType && before && after) {
                     if (!first) json=json", ";

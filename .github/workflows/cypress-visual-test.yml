@@ -1,0 +1,46 @@
+name: Cypress Visual Testing
+
+on:
+  workflow_dispatch:  # Allows manual trigger
+    inputs:
+      Brandcode:
+        description: "Brand code for the page"
+        required: true
+      PageType:
+        description: "Page type for the test"
+        required: true
+      URL1:
+        description: "First URL for comparison"
+        required: true
+      URL2:
+        description: "Second URL for comparison"
+        required: true
+  # pull_request:  # Runs on PRs (optional)
+  # push:  # Runs on pushes to the main branch
+  #   branches:
+  #     - main
+
+jobs:
+  cypress-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: 🛠️ Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: 📦 Install Dependencies
+        run: npm install
+
+      - name: 🚀 Run Cypress Visual Test
+        run: |
+          npx cypress run --headless --browser chrome
+        env:
+          URL_1: ${{ github.event.inputs.URL1 || 'https://dev--bbw-qa-global--alshaya-axp.aem.page/en/aura-info' }}
+          URL_2: ${{ github.event.inputs.URL2 || 'https://dev-fix-84223--bbw-qa-global--alshaya-axp.aem.page/en/aura-info' }}
+          Brandcode: ${{ github.event.inputs.Brandcode || 'BBW' }}
+          PageType: ${{ github.event.inputs.PageType || 'Aura' }}

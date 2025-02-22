@@ -117,10 +117,14 @@ jobs:
         run: |
           echo "[]" > merged-results.json  # Initialize an empty JSON array
 
-          for file in ./artifacts/**/results.json; do
+          # Find all results.json files and merge them
+          find ./artifacts -type f -name "results.json" | while read -r file; do
             echo "Processing: $file"
             jq -s '.[0] + .[1]' merged-results.json "$file" > temp.json && mv temp.json merged-results.json
           done
+
+          echo "Final Merged Results:"
+          cat merged-results.json
       - name: 📝 Generate PR Comment
         id: generate-comment
         run: |

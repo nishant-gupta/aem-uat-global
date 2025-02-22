@@ -15,7 +15,11 @@ on:
       URL2:
         description: "Second URL for comparison"
         required: true
-  pull_request:  # Runs on PRs (optional)
+  pull_request:
+    types:
+      - opened
+      - synchronize  # Runs on every new commit push
+      - reopened     # Runs if PR is reopened
     branches:
       - main
 

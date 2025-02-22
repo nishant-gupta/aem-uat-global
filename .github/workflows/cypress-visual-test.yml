@@ -40,57 +40,61 @@ jobs:
                                                      /^- PageType:/ { pageType=$NF } 
                                                      /^- Before:/ { before=$NF } 
                                                      /^- After:/ { after=$NF; print "{ \"brand\": \"" brand "\", \"pageType\": \"" pageType "\", \"before\": \"" before "\", \"after\": \"" after "\" }" }' | jq -s -c)
+          if [[ -z "$URL_PAIRS" || "$URL_PAIRS" == "[]" ]]; then
+            URL_PAIRS="[]"
+          fi
           echo "Extracted URL Pairs: $URL_PAIRS"
           echo "urls=$URL_PAIRS" >> "$GITHUB_OUTPUT"
-          cypress-test:
-            needs: extract-urls
-            runs-on: ubuntu-latest
-            strategy:
-              matrix:
-                pair: ${{ fromJson(needs.extract-urls.outputs.urls) }}
-            steps:
-              - name: 📥 Checkout Repository
-                uses: actions/checkout@v4
-        
-              - name: 🛠️ Setup Node.js
-                uses: actions/setup-node@v4
-                with:
-                  node-version: 18
-        
-              - name: 📦 Install Dependencies
-                run: npm install
-        
-              - name: 🚀 Run Cypress Visual Test
-                id: cypress
-                run: |
-                  npx cypress run --headless --browser chrome --env Brandcode=${{ matrix.pair.brand }},PageType=${{ matrix.pair.pageType }},URL_1=${{ matrix.pair.before }},URL_2=${{ matrix.pair.after }}
-                continue-on-error: true
-        
-              - name: 🖼️ Upload Cypress Screenshots & Diff Images
-                if: always()
-                uses: actions/upload-artifact@v4
-                with:
-                  name: visual-test-${{ matrix.pair.brand }}-${{ matrix.pair.pageType }}-${{ matrix.pair.before }}-vs-${{ matrix.pair.after }}
-                  path: cypress/screenshots/
-                  retention-days: 7
-        
-              - name: 📝 Collect Test Results
-                id: test-result
-                run: echo "result=${{ steps.cypress.outcome == 'success' && '✅ Passed' || '❌ Failed' }}" >> "$GITHUB_ENV"
-        
-          comment-on-pr:
-            needs: cypress-test
-            runs-on: ubuntu-latest
-            steps:
-              - name: 📝 Post Test Summary on PR
-                uses: mshick/add-pr-comment@v2
-                with:
-                  message: |
-                    # 🖼️ **Visual Test Results**
-                    **Results:**
-                    - **Brand:** `${{ matrix.pair.brand }}`
-                    - **Page Type:** `${{ matrix.pair.pageType }}`
-                    - **Before:** `${{ matrix.pair.before }}`
-                    - **After:** `${{ matrix.pair.after }}`
-                    - **Result:** `${{ env.result }}`
-                  repo-token: ${{ secrets.PAT_TOKEN }}
+
+  cypress-test:
+    needs: extract-urls
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        pair: ${{ fromJson(needs.extract-urls.outputs.urls) }}
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: 🛠️ Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: 📦 Install Dependencies
+        run: npm install
+
+      - name: 🚀 Run Cypress Visual Test
+        id: cypress
+        run: |
+          npx cypress run --headless --browser chrome --env Brandcode=${{ matrix.pair.brand }},PageType=${{ matrix.pair.pageType }},baseUrl1=${{ matrix.pair.before }},baseUrl2=${{ matrix.pair.after }}
+        continue-on-error: true
+
+      - name: 🖼️ Upload Cypress Screenshots & Diff Images
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-test-${{ matrix.pair.brand }}-${{ matrix.pair.pageType }}-${{ matrix.pair.before }}-vs-${{ matrix.pair.after }}
+          path: cypress/screenshots/
+          retention-days: 7
+
+      - name: 📝 Collect Test Results
+        id: test-result
+        run: echo "result=${{ steps.cypress.outcome == 'success' && '✅ Passed' || '❌ Failed' }}" >> "$GITHUB_ENV"
+
+  comment-on-pr:
+    needs: cypress-test
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📝 Post Test Summary on PR
+        uses: mshick/add-pr-comment@v2
+        with:
+          message: |
+            # 🖼️ **Visual Test Results**
+            **Results:**
+            - **Brand:** `${{ matrix.pair.brand }}`
+            - **Page Type:** `${{ matrix.pair.pageType }}`
+            - **Before:** `${{ matrix.pair.before }}`
+            - **After:** `${{ matrix.pair.after }}`
+            - **Result:** `${{ env.result }}`
+          repo-token: ${{ secrets.PAT_TOKEN }}

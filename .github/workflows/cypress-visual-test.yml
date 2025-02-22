@@ -15,10 +15,9 @@ on:
       URL2:
         description: "Second URL for comparison"
         required: true
-  # pull_request:  # Runs on PRs (optional)
-  # push:  # Runs on pushes to the main branch
-  #   branches:
-  #     - main
+  pull_request:  # Runs on PRs (optional)
+    branches:
+      - main
 
 jobs:
   cypress-test:
@@ -27,6 +26,34 @@ jobs:
     steps:
       - name: 📥 Checkout Repository
         uses: actions/checkout@v4
+
+      - name: 📜 Extract URLs from PR Description
+        id: extract_urls
+        run: |
+          PR_BODY="${{ github.event.pull_request.body }}"
+
+          echo "PR Description: $PR_BODY"
+
+          BEFORE_URL=$(echo "$PR_BODY" | grep -oP '(?<=Before: )https?://[^\s]+')
+          AFTER_URL=$(echo "$PR_BODY" | grep -oP '(?<=After: )https?://[^\s]+')
+          BRAND=$(echo "$PR_BODY" | grep -oP '(?<=Brand: )https?://[^\s]+')
+          PAGETYPE=$(echo "$PR_BODY" | grep -oP '(?<=PageType: )https?://[^\s]+')
+
+          if [[ -z "$BEFORE_URL" || -z "$AFTER_URL" ]]; then
+            echo "🚨 URLs not found in PR description! Skipping test."
+            echo "skip_test=true" >> $GITHUB_ENV
+          else
+            echo "🎯 Extracted BEFORE_URL: $BEFORE_URL"
+            echo "🎯 Extracted AFTER_URL: $AFTER_URL"
+            echo "BEFORE_URL=$BEFORE_URL" >> $GITHUB_ENV
+            echo "AFTER_URL=$AFTER_URL" >> $GITHUB_ENV
+            echo "BRAND=$BRAND" >> $GITHUB_ENV
+            echo "PAGETYPE=$PAGETYPE" >> $GITHUB_ENV
+          fi
+
+      - name: 🚫 Skip if URLs are missing
+        if: env.skip_test == 'true'
+        run: echo "Skipping test since URLs are missing."
 
       - name: 🛠️ Setup Node.js
         uses: actions/setup-node@v4
@@ -40,7 +67,7 @@ jobs:
         run: |
           npx cypress run --headless --browser chrome
         env:
-          URL_1: ${{ github.event.inputs.URL1 || 'https://dev--bbw-qa-global--alshaya-axp.aem.page/en/aura-info' }}
-          URL_2: ${{ github.event.inputs.URL2 || 'https://dev-fix-84223--bbw-qa-global--alshaya-axp.aem.page/en/aura-info' }}
-          Brandcode: ${{ github.event.inputs.Brandcode || 'BBW' }}
-          PageType: ${{ github.event.inputs.PageType || 'Aura' }}
+          URL_1: ${{ env.BEFORE_URL || github.event.inputs.URL1 || 'https://dev--bbw-qa-global--alshaya-axp.aem.page/en/aura-info' }}
+          URL_2: ${{ env.AFTER_URL || github.event.inputs.URL2 || 'https://dev-fix-84223--bbw-qa-global--alshaya-axp.aem.page/en/aura-info' }}
+          Brandcode: ${{ env.BRAND || github.event.inputs.Brandcode || 'BBW' }}
+          PageType: ${{ env.PAGETYPE || github.event.inputs.PageType || 'Aura' }}

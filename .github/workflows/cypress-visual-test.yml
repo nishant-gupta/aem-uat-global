@@ -35,17 +35,21 @@ jobs:
       - name: 📝 Extract URLs, Brand & PageType from PR Description
         id: extract
         run: |
-          DESCRIPTION="${{ github.event.pull_request.body }}"
-          URL_PAIRS=$(echo "$DESCRIPTION" | awk '/^- Brand:/ { brand=$NF } 
-                                                     /^- PageType:/ { pageType=$NF } 
-                                                     /^- Before:/ { before=$NF } 
-                                                     /^- After:/ { after=$NF; print "{ \"brand\": \"" brand "\", \"pageType\": \"" pageType "\", \"before\": \"" before "\", \"after\": \"" after "\" }" }' | jq -s -c)
+          DESCRIPTION=$(echo "${{ github.event.pull_request.body }}" | sed 's/"/\\"/g' | jq -R -s '.')
+          URL_PAIRS=$(echo "$DESCRIPTION" | awk '
+            /- Brand:/ { brand=$NF }
+            /- PageType:/ { pageType=$NF }
+            /- Before:/ { before=$NF }
+            /- After:/ { after=$NF; print "{ \"brand\": \"" brand "\", \"pageType\": \"" pageType "\", \"before\": \"" before "\", \"after\": \"" after "\" }" }'
+          ' | jq -s -c)
+          
+          # Ensure valid JSON output
           if [[ -z "$URL_PAIRS" || "$URL_PAIRS" == "[]" ]]; then
             URL_PAIRS="[]"
           fi
+
           echo "Extracted URL Pairs: $URL_PAIRS"
           echo "urls=$URL_PAIRS" >> "$GITHUB_OUTPUT"
-
   cypress-test:
     needs: extract-urls
     runs-on: ubuntu-latest

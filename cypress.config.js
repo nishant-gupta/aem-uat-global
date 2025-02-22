@@ -55,7 +55,7 @@ module.exports = {
             // eslint-disable-next-line no-undef
             resemble(baseline)
               .compareTo(modified)
-              .ignoreColors() // Ignores colors (optional)
+              .ignoreLess() // Ignores colors (optional)
               .onComplete((data) => {
                 const misMatchPercentage = parseFloat(data.misMatchPercentage);
                 console.log(`Mismatch: ${misMatchPercentage}%`);

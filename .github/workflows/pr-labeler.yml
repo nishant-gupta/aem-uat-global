@@ -47,7 +47,7 @@ jobs:
         if: env.LABELS != ''
         uses: actions-ecosystem/action-add-labels@v1
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+          github_token: ${{ secrets.PAT_TOKEN }}
           labels: ${{ env.LABELS }}
 
       - name: Comment on PR

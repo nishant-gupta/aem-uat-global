@@ -40,8 +40,8 @@ jobs:
             BEGIN { FS=": "; OFS=""; brand=""; pageType=""; before=""; after=""; json="[ "; first=1 }
             /^\s*- Brand:/ { brand=$2 }
             /^\s*- PageType:/ { pageType=$2 }
-            /^\s*- Before:/ { before=$2 }
-            /^\s*- After:/ { 
+            /^\s*- Baseline:/ { before=$2 }
+            /^\s*- Modified:/ { 
                 after=$2;
                 if (brand && pageType && before && after) {
                     if (!first) json=json", ";
@@ -151,7 +151,8 @@ jobs:
             echo "| $BRAND | $PAGE_TYPE | [🔗 Link]($BEFORE) | [🔗 Link]($AFTER) | $STATUS |" >> comment.md
           done
 
-          echo "\n📎 **[Download Artifacts](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})**" >> comment.md
+          echo "---" >> comment.md
+          echo "📎 **[Download Artifacts](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})**" >> comment.md
 
       - name: 💬 Post PR Comment
         uses: mshick/add-pr-comment@v2

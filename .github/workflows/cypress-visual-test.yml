@@ -89,7 +89,7 @@ jobs:
         if: always()
         run: |
           STATUS="❌ Failed"
-          if [[ "$EXIT_CODE" == "0" ]]; then
+          if [[ "${{ needs.cypress-test.result }}" == "success" ]]; then
             STATUS="✅ Success"
           fi
 

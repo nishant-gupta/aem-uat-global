@@ -59,7 +59,8 @@ jobs:
         uses: actions-ecosystem/action-add-labels@v1
         with:
           github_token: ${{ secrets.PAT_TOKEN }}
-          labels: ${{ env.LABELS }}
+          # labels: ${{ env.LABELS }}
+          labels: "styles,blocks"
 
       - name: Comment on PR
         uses: mshick/add-pr-comment@v2

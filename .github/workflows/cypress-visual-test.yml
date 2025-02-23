@@ -151,6 +151,8 @@ jobs:
             echo "| $BRAND | $PAGE_TYPE | [🔗 Link]($BEFORE) | [🔗 Link]($AFTER) | $STATUS |" >> comment.md
           done
 
+          echo "\n📎 **[Download Artifacts](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})**" >> comment.md
+
       - name: 💬 Post PR Comment
         uses: mshick/add-pr-comment@v2
         with:

@@ -48,7 +48,7 @@ jobs:
           LABELS_JSON="[$(IFS=,; echo "${LABELS[*]}")]"
           echo "LABELS=$LABELS_JSON" >> $GITHUB_ENV
       
-      - name: Add Labels to PR
+      - name: Add Labels to PR 1
         if: env.LABELS != ''
         uses: actions-ecosystem/action-add-labels@v1
         with:

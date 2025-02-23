@@ -89,9 +89,11 @@ jobs:
         if: always()
         run: |
           STATUS="❌ Failed"
-          if [[ "${{ needs.cypress-test.result }}" == "success" ]]; then
+          if [[ "${{ steps.cypress.outcome }}" == "success" ]]; then
             STATUS="✅ Success"
           fi
+
+          echo "STATUS: $STATUS"
 
           echo '{
             "brand": "${{ matrix.pair.brand }}",

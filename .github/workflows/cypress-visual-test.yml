@@ -88,7 +88,7 @@ jobs:
       - name: ✅ Save Test Result
         if: always()
         run: |
-          echo "{ \"brand\": \"${{ matrix.pair.brand }}\", \"pageType\": \"${{ matrix.pair.pageType }}\", \"before\": \"${{ matrix.pair.before }}\", \"after\": \"${{ matrix.pair.after }}\", \"status\": \"${{ job.status }}\" }" >> results.json
+          echo "{ \"brand\": \"${{ matrix.pair.brand }}\", \"pageType\": \"${{ matrix.pair.pageType }}\", \"before\": \"${{ matrix.pair.before }}\", \"after\": \"${{ matrix.pair.after }}\", \"status\": \"${{ job.status }}\" }" >> results-${{ matrix.pair.brand }}-${{ matrix.pair.pageType }}.json
 
       - name: 🖼️ Upload Cypress Screenshots & Diff Images
         if: always()
@@ -97,7 +97,12 @@ jobs:
           name: visual-test-${{ matrix.pair.brand }}-${{ matrix.pair.pageType }}
           path: cypress/screenshots/
           retention-days: 7
-
+      - name: 📁 Upload Results
+        uses: actions/upload-artifact@v4
+        with:
+          name: results-${{ matrix.pair.brand }}-${{ matrix.pair.pageType }}
+          path: results-${{ matrix.pair.brand }}-${{ matrix.pair.pageType }}.json
+  
       - name: 📝 Collect Test Results
         if: always()
         id: test-result
@@ -113,30 +118,16 @@ jobs:
         with:
           path: ./artifacts
 
-      - name: 📝 Merge results into a single file
-        run: |
-          # Initialize an empty array in merged-results.json
-          echo "[]" > merged-results.json
-
-          # Process each results.json file and append its contents
-          for file in $(find ./artifacts -type f -name "results.json"); do
-            echo "Processing: $file"
-            # Read the content of the current file and merge it with existing results
-            jq -s 'add' merged-results.json "$file" > temp.json && mv temp.json merged-results.json
-          done
-
-          echo "Final Merged Results:"
-          cat merged-results.json
       - name: 📝 Generate PR Comment
         id: generate-comment
         run: |
           COMMENT="### **Visual Test Results**\n"
-          while read -r line; do
-            BRAND=$(echo $line | jq -r '.brand')
-            PAGE_TYPE=$(echo $line | jq -r '.pageType')
-            BEFORE=$(echo $line | jq -r '.before')
-            AFTER=$(echo $line | jq -r '.after')
-            STATUS=$(echo $line | jq -r '.status')
+          for file in artifacts/*/results-*.json; do
+            BRAND=$(jq -r '.brand' "$file")
+            PAGE_TYPE=$(jq -r '.pageType' "$file")
+            BEFORE=$(jq -r '.before' "$file")
+            AFTER=$(jq -r '.after' "$file")
+            STATUS=$(jq -r '.status' "$file")
 
             ICON="✅"
             if [[ "$STATUS" != "success" ]]; then
@@ -148,7 +139,7 @@ jobs:
             COMMENT+="\n- **Before:** [$BEFORE]($BEFORE)"
             COMMENT+="\n- **After:** [$AFTER]($AFTER)"
             COMMENT+="\n- **Result:** $ICON $STATUS\n"
-          done < merged-results.json
+          done
 
           echo "$COMMENT" > comment.md
 

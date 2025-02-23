@@ -1,0 +1,68 @@
+name: PR Labeler & Validator Bot
+
+on:
+  pull_request:
+    types:
+      - opened
+      - synchronize  # When PR is updated
+      - reopened
+
+jobs:
+  analyze-changes:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2  # Fetch history for comparison
+
+      - name: Get Changed Files
+        id: changed-files
+        uses: tj-actions/changed-files@v39
+        with:
+          base_sha: ${{ github.event.pull_request.base.sha }}
+          separator: ','  # Output as comma-separated list
+
+      - name: Determine Labels
+        id: labels
+        run: |
+          CHANGED_FILES="${{ steps.changed-files.outputs.all_changed_files }}"
+          LABELS=""
+
+          if echo "$CHANGED_FILES" | grep -q "scripts/"; then
+            LABELS="$LABELS, scripts"
+          fi
+          
+          if echo "$CHANGED_FILES" | grep -q "styles/"; then
+            LABELS="$LABELS, styles"
+          fi
+          
+          if echo "$CHANGED_FILES" | grep -q "blocks/"; then
+            LABELS="$LABELS, blocks"
+          fi
+
+          echo "LABELS=${LABELS#,}" >> $GITHUB_ENV
+
+      - name: Add Labels to PR
+        if: env.LABELS != ''
+        uses: actions-ecosystem/action-add-labels@v1
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          labels: ${{ env.LABELS }}
+
+      - name: Comment on PR
+        uses: mshick/add-pr-comment@v2
+        with:
+          message: |
+            🔍 **Automated PR Analysis** 🔍  
+            - **Changed Files:** ${{ steps.changed-files.outputs.all_changed_files }}  
+            - **Labels Applied:** ${{ env.LABELS }}  
+            - **Reviewers Added:** ${{ env.CORE_REVIEWERS }}
+
+      - name: Assign Reviewers from Environment Variable
+        uses: octokit/request-action@v2.x
+        with:
+          route: POST /repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/requested_reviewers
+          reviewers: ${{ vars.REVIEWERS }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}

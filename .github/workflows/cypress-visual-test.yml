@@ -132,9 +132,12 @@ jobs:
       - name: 📝 Generate PR Comment
         id: generate-comment
         run: |
-          COMMENT="### 🖼️ **Visual Test Results**\n"
-          COMMENT+="\n| Brand | Page Type | Before | After | Result |\n"
-          COMMENT+="|-------|-----------|--------|-------|--------|\n"
+          cat <<EOF > comment.md
+          ### 🖼️ **Visual Test Results**
+
+          | Brand | Page Type | Before | After | Result |
+          |-------|-----------|--------|-------|--------|
+          EOF
 
           for file in artifacts/*/results-*.json; do
             BRAND=$(jq -r '.brand' "$file")
@@ -143,10 +146,9 @@ jobs:
             AFTER=$(jq -r '.after' "$file")
             STATUS=$(jq -r '.status' "$file")
 
-            COMMENT+="| $BRAND | $PAGE_TYPE | [🔗 Link]($BEFORE) | [🔗 Link]($AFTER) | $STATUS |\n"
+            echo "| $BRAND | $PAGE_TYPE | [🔗 Link]($BEFORE) | [🔗 Link]($AFTER) | $STATUS |" >> comment.md
           done
 
-          echo "$COMMENT" > comment.md
       - name: 💬 Post PR Comment
         uses: mshick/add-pr-comment@v2
         with:

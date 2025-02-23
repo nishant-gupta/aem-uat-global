@@ -30,39 +30,34 @@ jobs:
       - name: Determine Labels
         id: labels
         run: |
-          CHANGED_FILES="${{ steps.changed-files.outputs.all_changed_files }}"
-          LABELS=()
-      
-          if echo "$CHANGED_FILES" | grep -q "scripts/"; then
-            LABELS+=('"scripts"')
+          LABELS=""
+          if echo "${{ steps.changed-files.outputs.all_changed_files }}" | grep -q "scripts/"; then
+            LABELS="${LABELS}scripts\n"
           fi
-      
-          if echo "$CHANGED_FILES" | grep -q "styles/"; then
-            LABELS+=('"styles"')
+          if echo "${{ steps.changed-files.outputs.all_changed_files }}" | grep -q "styles/"; then
+            LABELS="${LABELS}styles\n"
           fi
-      
-          if echo "$CHANGED_FILES" | grep -q "blocks/"; then
-            LABELS+=('"blocks"')
+          if echo "${{ steps.changed-files.outputs.all_changed_files }}" | grep -q "blocks/"; then
+            LABELS="${LABELS}blocks\n"
           fi
-      
-          LABELS_JSON="[$(IFS=,; echo "${LABELS[*]}")]"
-          echo "LABELS=$LABELS_JSON" >> $GITHUB_ENV
-      
-      - name: Add Labels to PR 1
-        if: env.LABELS != ''
+
+          # Remove trailing newline and set the environment variable
+          echo -e "LABELS<<EOF" >> $GITHUB_ENV
+          echo -e "$LABELS" >> $GITHUB_ENV
+          echo -e "EOF" >> $GITHUB_ENV
+
+      - name: Add Labels to PR
         uses: actions-ecosystem/action-add-labels@v1
         with:
-          github_token: ${{ secrets.PAT_TOKEN }}
-          # labels: ${{ env.LABELS }}
-          labels: "styles,blocks"
-
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          labels: ${{ env.LABELS }}
       # - name: Add Labels to PR
       #   if: env.LABELS != ''
       #   uses: actions-ecosystem/action-add-labels@v1
       #   with:
       #     github_token: ${{ secrets.PAT_TOKEN }}
       #     # labels: ${{ env.LABELS }}
-      #     labels: "styles,blocks"
+      #     labels: "styles\n,blocks"
 
       - name: Comment on PR
         uses: mshick/add-pr-comment@v2

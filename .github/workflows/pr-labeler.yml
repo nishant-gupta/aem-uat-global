@@ -27,22 +27,29 @@ jobs:
         id: labels
         run: |
           CHANGED_FILES="${{ steps.changed-files.outputs.all_changed_files }}"
-          LABELS=""
-
+          LABELS=()
+      
           if echo "$CHANGED_FILES" | grep -q "scripts/"; then
-            LABELS="$LABELS, scripts"
+            LABELS+=('"scripts"')
           fi
-          
+      
           if echo "$CHANGED_FILES" | grep -q "styles/"; then
-            LABELS="$LABELS, styles"
+            LABELS+=('"styles"')
           fi
-          
+      
           if echo "$CHANGED_FILES" | grep -q "blocks/"; then
-            LABELS="$LABELS, blocks"
+            LABELS+=('"blocks"')
           fi
-
-          echo "LABELS=${LABELS#,}" >> $GITHUB_ENV
-
+      
+          LABELS_JSON="[$(IFS=,; echo "${LABELS[*]}")]"
+          echo "LABELS=$LABELS_JSON" >> $GITHUB_ENV
+      
+      - name: Add Labels to PR
+        uses: actions-ecosystem/action-add-labels@v1
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          labels: ${{ env.LABELS }}
+        
       - name: Add Labels to PR
         if: env.LABELS != ''
         uses: actions-ecosystem/action-add-labels@v1
@@ -58,11 +65,15 @@ jobs:
             - **Changed Files:** ${{ steps.changed-files.outputs.all_changed_files }}  
             - **Labels Applied:** ${{ env.LABELS }}  
             - **Reviewers Added:** ${{ env.CORE_REVIEWERS }}
-
+      - name: Convert REVIEWERS to JSON
+        run: |
+          JSON_REVIEWERS=$(echo '["'${{ vars.REVIEWERS }}'"]' | sed 's/,/","/g')
+          echo "JSON_REVIEWERS=$JSON_REVIEWERS" >> $GITHUB_ENV
+          
       - name: Assign Reviewers from Environment Variable
         uses: octokit/request-action@v2.x
         with:
           route: POST /repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/requested_reviewers
-          reviewers: ${{ vars.REVIEWERS }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
+          reviewers: ${{ env.JSON_REVIEWERS }}
+          token: ${{ secrets.PAT_TOKEN }}
+          

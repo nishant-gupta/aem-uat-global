@@ -88,8 +88,18 @@ jobs:
       - name: ✅ Save Test Result
         if: always()
         run: |
-          echo "{ \"brand\": \"${{ matrix.pair.brand }}\", \"pageType\": \"${{ matrix.pair.pageType }}\", \"before\": \"${{ matrix.pair.before }}\", \"after\": \"${{ matrix.pair.after }}\", \"status\": \"${{ job.status }}\" }" >> results-${{ matrix.pair.brand }}-${{ matrix.pair.pageType }}.json
+          STATUS="❌ Failed"
+          if [[ "$EXIT_CODE" == "0" ]]; then
+            STATUS="✅ Success"
+          fi
 
+          echo '{
+            "brand": "${{ matrix.pair.brand }}",
+            "pageType": "${{ matrix.pair.pageType }}",
+            "before": "${{ matrix.pair.before }}",
+            "after": "${{ matrix.pair.after }}",
+            "status": "'$STATUS'"
+          }' > results-${{ matrix.pair.brand }}-${{ matrix.pair.pageType }}.json
       - name: 🖼️ Upload Cypress Screenshots & Diff Images
         if: always()
         uses: actions/upload-artifact@v4
@@ -98,6 +108,7 @@ jobs:
           path: cypress/screenshots/
           retention-days: 7
       - name: 📁 Upload Results
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: results-${{ matrix.pair.brand }}-${{ matrix.pair.pageType }}
@@ -121,7 +132,10 @@ jobs:
       - name: 📝 Generate PR Comment
         id: generate-comment
         run: |
-          COMMENT="### **Visual Test Results**\n"
+          COMMENT="### 🖼️ **Visual Test Results**\n"
+          COMMENT+="\n| Brand | Page Type | Before | After | Result |\n"
+          COMMENT+="|-------|-----------|--------|-------|--------|\n"
+
           for file in artifacts/*/results-*.json; do
             BRAND=$(jq -r '.brand' "$file")
             PAGE_TYPE=$(jq -r '.pageType' "$file")
@@ -129,20 +143,10 @@ jobs:
             AFTER=$(jq -r '.after' "$file")
             STATUS=$(jq -r '.status' "$file")
 
-            ICON="✅"
-            if [[ "$STATUS" != "success" ]]; then
-              ICON="❌"
-            fi
-
-            COMMENT+="\n- **Brand:** $BRAND"
-            COMMENT+="\n- **Page Type:** $PAGE_TYPE"
-            COMMENT+="\n- **Before:** [$BEFORE]($BEFORE)"
-            COMMENT+="\n- **After:** [$AFTER]($AFTER)"
-            COMMENT+="\n- **Result:** $ICON $STATUS\n"
+            COMMENT+="| $BRAND | $PAGE_TYPE | [🔗 Link]($BEFORE) | [🔗 Link]($AFTER) | $STATUS |\n"
           done
 
           echo "$COMMENT" > comment.md
-
       - name: 💬 Post PR Comment
         uses: mshick/add-pr-comment@v2
         with:

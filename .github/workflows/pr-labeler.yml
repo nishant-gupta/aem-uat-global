@@ -49,18 +49,19 @@ jobs:
           echo "LABELS=$LABELS_JSON" >> $GITHUB_ENV
       
       - name: Add Labels to PR
-        uses: actions-ecosystem/action-add-labels@v1
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          labels: ${{ env.LABELS }}
-        
-      - name: Add Labels to PR
         if: env.LABELS != ''
         uses: actions-ecosystem/action-add-labels@v1
         with:
           github_token: ${{ secrets.PAT_TOKEN }}
-          # labels: ${{ env.LABELS }}
-          labels: "styles,blocks"
+          labels: ${{ env.LABELS }}
+        
+      # - name: Add Labels to PR
+      #   if: env.LABELS != ''
+      #   uses: actions-ecosystem/action-add-labels@v1
+      #   with:
+      #     github_token: ${{ secrets.PAT_TOKEN }}
+      #     # labels: ${{ env.LABELS }}
+      #     labels: "styles,blocks"
 
       - name: Comment on PR
         uses: mshick/add-pr-comment@v2

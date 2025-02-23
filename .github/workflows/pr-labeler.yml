@@ -6,6 +6,10 @@ on:
       - opened
       - synchronize  # When PR is updated
       - reopened
+      
+permissions:
+  contents: read
+  pull-requests: write  # ✅ Ensures PR labels can be modified
 
 jobs:
   analyze-changes:

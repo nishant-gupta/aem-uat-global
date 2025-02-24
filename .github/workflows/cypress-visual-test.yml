@@ -22,6 +22,9 @@ on:
       - reopened     # Runs if PR is reopened
     branches:
       - main
+permissions:
+  contents: read
+  pull-requests: write  # ✅ Ensures PR can be commented
 
 jobs:
   extract-urls:
@@ -158,4 +161,4 @@ jobs:
         uses: mshick/add-pr-comment@v2
         with:
           message-path: comment.md
-          repo-token: ${{ secrets.PAT_TOKEN }}
+          repo-token: ${{ secrets.GITHUB_TOKEN }}

@@ -64,5 +64,5 @@ jobs:
         uses: madrapps/add-reviewers@v1
         with:
           reviewers: ${{ vars.CORE_REVIEWERS }}
-          token: ${{ secrets.PAT_TOKEN }}
+          token: ${{ secrets.GITHUB_TOKEN }}
           

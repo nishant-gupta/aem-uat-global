@@ -1,0 +1,32 @@
+name: Manually Build Theme and React App
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Select the branch to run this workflow on'
+        required: true
+        default: 'dev'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+      - name: Install dependencies
+        run: npm install
+      # commit back to the repository
+      - name: Commit changes
+        run: |
+          git config --local user.email "axp-gitbot@ng.com"
+          git config --local user.name "NG AXP Git Bot"
+          git add .
+          git commit -m "chore: Generate Theme and React app Files"
+          git push

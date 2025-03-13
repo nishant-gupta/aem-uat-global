@@ -184,7 +184,7 @@ jobs:
           string: ${{ github.event.client_payload.path }}
           replace-with: ''
       - name: Purge CDN Global DOC/MD content
-        if: ${{ endsWith(github.event.client_payload.path, '.md') && vars[needs.build-vars.outputs.GLOBAL_STATIC_PURGE_DISABLED_KEY] != 'TRUE' }}
+        if: ${{ !endsWith(github.event.client_payload.path, 'placeholders.json') && vars[needs.build-vars.outputs.GLOBAL_STATIC_PURGE_DISABLED_KEY] != 'TRUE' }}
         id: purgecdnglobalcontent
         env:
           FASTLY_API_KEY: ${{ secrets[needs.build-vars.outputs.FASTLY_API_KEY_KEY] }}

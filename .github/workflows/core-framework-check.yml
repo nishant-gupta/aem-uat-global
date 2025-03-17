@@ -111,7 +111,7 @@ jobs:
 
       - name: Run core check script
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CORE_REVIEWERS: ${{ secrets.CORE_REVIEWERS }}
+          GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
+          CORE_REVIEWERS: ${{ env.CORE_REVIEWERS }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: node .github/scripts/check-core-files.js 

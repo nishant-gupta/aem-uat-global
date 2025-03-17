@@ -3,6 +3,10 @@ name: Core Framework Check
 on:
   pull_request:
     types: [opened, synchronize, reopened]
+    
+permissions:
+  contents: read
+  pull-requests: write  # ✅ Ensures PR labels can be modified
 
 jobs:
   check-core-files:

@@ -69,75 +69,85 @@ jobs:
           echo "CORE_REVIEWERS: ${{ vars.CORE_REVIEWERS }}"
           echo "condition: ${{ steps.check-core.outputs.core_files_changed == 'true' && vars.CORE_REVIEWERS != '' }}"
 
-      - name: Add reviewers to PR
-        if: steps.check-core.outputs.core_files_changed == 'true' && vars.CORE_REVIEWERS != ''
+      - name: Process reviewers and create comment
+        if: steps.check-core.outputs.core_files_changed == 'true'
+        id: process-reviewers
         uses: actions/github-script@v6
         env:
           CORE_REVIEWERS: ${{ vars.CORE_REVIEWERS }}
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const coreReviewers = process.env.CORE_REVIEWERS.split(',').map(r => r.trim());
+            // Process files for comment
+            const files = '${{ steps.check-core.outputs.core_files }}'.split(' ');
+            const formattedFiles = files.map(file => `- \`${file}\``).join('\n');
             
-            // Get PR details including current reviewers and PR author
-            const { data: prData } = await github.rest.pulls.get({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              pull_number: context.issue.number
-            });
+            // Process reviewers
+            let reviewersToAdd = [];
+            let reviewerMentions = '';
             
-            // Get current reviewers
-            const currentReviewers = prData.requested_reviewers ? 
-              prData.requested_reviewers.map(reviewer => reviewer.login) : [];
-            
-            // Get PR author
-            const prAuthor = prData.user.login;
-            
-            // Filter out reviewers who are already on the PR or who raised the PR
-            const reviewersToAdd = coreReviewers.filter(reviewer => 
-              !currentReviewers.includes(reviewer) && reviewer !== prAuthor
-            );
-            
-            if (reviewersToAdd.length > 0) {
-              console.log(`Adding reviewers: ${reviewersToAdd.join(', ')}`);
-              await github.rest.pulls.requestReviewers({
+            if (process.env.CORE_REVIEWERS) {
+              const coreReviewers = process.env.CORE_REVIEWERS.split(',').map(r => r.trim());
+              
+              // Get PR details including current reviewers and PR author
+              const { data: prData } = await github.rest.pulls.get({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                pull_number: context.issue.number,
-                reviewers: reviewersToAdd
+                pull_number: context.issue.number
               });
-            } else {
-              console.log('No new reviewers to add (all core reviewers are already added or are the PR author)');
+              
+              // Get current reviewers
+              const currentReviewers = prData.requested_reviewers ? 
+                prData.requested_reviewers.map(reviewer => reviewer.login) : [];
+              
+              // Get PR author
+              const prAuthor = prData.user.login;
+              
+              // Filter out reviewers who are already on the PR or who raised the PR
+              reviewersToAdd = coreReviewers.filter(reviewer => 
+                !currentReviewers.includes(reviewer) && reviewer !== prAuthor
+              );
+              
+              // Create @mentions for all reviewers (both new and existing core reviewers)
+              const allReviewers = [...new Set([...currentReviewers, ...reviewersToAdd])];
+              reviewerMentions = allReviewers
+                .filter(reviewer => coreReviewers.includes(reviewer))
+                .map(reviewer => `@${reviewer}`)
+                .join(' ');
+              
+              // Add reviewers to PR if there are new ones to add
+              if (reviewersToAdd.length > 0) {
+                console.log(`Adding reviewers: ${reviewersToAdd.join(', ')}`);
+                await github.rest.pulls.requestReviewers({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  pull_number: context.issue.number,
+                  reviewers: reviewersToAdd
+                });
+              } else {
+                console.log('No new reviewers to add (all core reviewers are already added or are the PR author)');
+              }
             }
-
-      - name: Format core files for comment
-        if: steps.check-core.outputs.core_files_changed == 'true'
-        id: format-files
-        run: |
-          FILES="${{ steps.check-core.outputs.core_files }}"
-          FORMATTED_FILES=""
-          
-          # Convert space-separated list to markdown bullet points
-          for FILE in $FILES; do
-            FORMATTED_FILES="${FORMATTED_FILES}- \`${FILE}\`\n"
-          done
-          
-          # Escape the formatted files for GitHub Actions
-          FORMATTED_FILES="${FORMATTED_FILES//'%'/'%25'}"
-          FORMATTED_FILES="${FORMATTED_FILES//$'\n'/'%0A'}"
-          FORMATTED_FILES="${FORMATTED_FILES//$'\r'/'%0D'}"
-          
-          echo "formatted_files=${FORMATTED_FILES}" >> $GITHUB_OUTPUT
-
-      - name: Add comment to PR
-        if: steps.check-core.outputs.core_files_changed == 'true'
-        uses: mshick/add-pr-comment@v2
-        with:
-          message: |
-            ## Core Framework Files Detected
+            
+            // Create and post comment
+            let commentBody = `## Core Framework Files Detected
             
             This PR contains changes to the following core framework files:
             
-            ${{ steps.format-files.outputs.formatted_files }}
+            ${formattedFiles}
             
-            This PR has been labeled as a "CORE FRAMEWORK" change and appropriate reviewers have been notified. 
+            This PR has been labeled as a "CORE FRAMEWORK" change`;
+            
+            if (reviewerMentions) {
+              commentBody += ` and the following reviewers have been notified: ${reviewerMentions}`;
+            }
+            
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: commentBody
+            });
+            
+            // Store reviewers added for potential future use
+            core.setOutput('reviewers_added', reviewersToAdd.join(',')); 

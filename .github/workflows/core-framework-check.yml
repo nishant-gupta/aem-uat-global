@@ -66,12 +66,44 @@ jobs:
 
       - name: Add reviewers to PR
         if: steps.check-core.outputs.core_files_changed == 'true' && env.CORE_REVIEWERS != ''
-        uses: madrapps/add-reviewers@v1
-        with:
-          reviewers: ${{ env.CORE_REVIEWERS }}
-          token: ${{ secrets.GITHUB_TOKEN }}
+        uses: actions/github-script@v6
         env:
-          CORE_REVIEWERS: ${{ secrets.CORE_REVIEWERS }}
+          CORE_REVIEWERS: ${{ env.CORE_REVIEWERS }}
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const coreReviewers = process.env.CORE_REVIEWERS.split(',').map(r => r.trim());
+            
+            // Get PR details including current reviewers and PR author
+            const { data: prData } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number
+            });
+            
+            // Get current reviewers
+            const currentReviewers = prData.requested_reviewers ? 
+              prData.requested_reviewers.map(reviewer => reviewer.login) : [];
+            
+            // Get PR author
+            const prAuthor = prData.user.login;
+            
+            // Filter out reviewers who are already on the PR or who raised the PR
+            const reviewersToAdd = coreReviewers.filter(reviewer => 
+              !currentReviewers.includes(reviewer) && reviewer !== prAuthor
+            );
+            
+            if (reviewersToAdd.length > 0) {
+              console.log(`Adding reviewers: ${reviewersToAdd.join(', ')}`);
+              await github.rest.pulls.requestReviewers({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: context.issue.number,
+                reviewers: reviewersToAdd
+              });
+            } else {
+              console.log('No new reviewers to add (all core reviewers are already added or are the PR author)');
+            }
 
       - name: Format core files for comment
         if: steps.check-core.outputs.core_files_changed == 'true'
@@ -103,5 +135,4 @@ jobs:
             
             ${{ steps.format-files.outputs.formatted_files }}
             
-            This PR has been labeled as a "CORE FRAMEWORK" change and appropriate reviewers have been notified.
-          repo-token: ${{ secrets.GITHUB_TOKEN }} 
+            This PR has been labeled as a "CORE FRAMEWORK" change and appropriate reviewers have been notified. 

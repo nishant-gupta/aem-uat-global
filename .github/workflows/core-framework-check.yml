@@ -66,14 +66,14 @@ jobs:
 
       - name: echo CORE_REVIEWERS
         run: |
-          echo "CORE_REVIEWERS: ${{ env.CORE_REVIEWERS }}"
-          echo "condition: ${{ steps.check-core.outputs.core_files_changed == 'true' && env.CORE_REVIEWERS != '' }}"
+          echo "CORE_REVIEWERS: ${{ vars.CORE_REVIEWERS }}"
+          echo "condition: ${{ steps.check-core.outputs.core_files_changed == 'true' && vars.CORE_REVIEWERS != '' }}"
 
       - name: Add reviewers to PR
-        if: steps.check-core.outputs.core_files_changed == 'true' && env.CORE_REVIEWERS != ''
+        if: steps.check-core.outputs.core_files_changed == 'true' && vars.CORE_REVIEWERS != ''
         uses: actions/github-script@v6
         env:
-          CORE_REVIEWERS: ${{ env.CORE_REVIEWERS }}
+          CORE_REVIEWERS: ${{ vars.CORE_REVIEWERS }}
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |

@@ -64,6 +64,11 @@ jobs:
               labels: ['CORE FRAMEWORK']
             })
 
+      - name: echo CORE_REVIEWERS
+        run: |
+          echo "CORE_REVIEWERS: ${{ env.CORE_REVIEWERS }}"
+          echo "condition: ${{ steps.check-core.outputs.core_files_changed == 'true' && env.CORE_REVIEWERS != '' }}"
+
       - name: Add reviewers to PR
         if: steps.check-core.outputs.core_files_changed == 'true' && env.CORE_REVIEWERS != ''
         uses: actions/github-script@v6

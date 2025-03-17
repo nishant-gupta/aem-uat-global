@@ -1,0 +1,117 @@
+name: Core Framework Check
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  check-core-files:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Create core check script
+        run: |
+          mkdir -p .github/scripts
+          cat > .github/scripts/check-core-files.js << 'EOF'
+          const fs = require('fs');
+          const path = require('path');
+          const { execSync } = require('child_process');
+
+          // Core file patterns
+          const corePatterns = [
+            'blocks/*/*.css',
+            'blocks/*/*.js',
+            'blocks/*/slots/*.js',
+            'scripts/**/*.js',
+            'styles/*.css',
+            'templates/*/*.css',
+            'templates/*/*.js',
+            'theme-tools/*.*',
+            'tools/**/*.*',
+            'react-app/api/**',
+            'react-app/context/**',
+            'react-app/library/**',
+            'react-app/shared/**',
+            'react-app/store/**',
+            'react-app/utils/**',
+            'react-app/app/*/*.css',
+            'react-app/app/*/*.js',
+            'react-app/app/*/components/**'
+          ];
+
+          // Function to check if a file matches any of the core patterns
+          function isCore(file) {
+            return corePatterns.some(pattern => {
+              const regexPattern = pattern
+                .replace(/\./g, '\\.')
+                .replace(/\*\*/g, '.*')
+                .replace(/\*/g, '[^/]*');
+              return new RegExp(`^${regexPattern}$`).test(file);
+            });
+          }
+
+          // Get PR number from GitHub environment
+          const prNumber = process.env.PR_NUMBER;
+          const token = process.env.GITHUB_TOKEN;
+          const coreReviewers = process.env.CORE_REVIEWERS || '';
+          const repoFullName = process.env.GITHUB_REPOSITORY;
+          const [owner, repo] = repoFullName.split('/');
+
+          // Get list of files changed in the PR
+          const changedFilesOutput = execSync(`curl -s -H "Authorization: token ${token}" https://api.github.com/repos/${owner}/${repo}/pulls/${prNumber}/files`).toString();
+          const changedFiles = JSON.parse(changedFilesOutput);
+          
+          // Filter for core files
+          const coreFiles = changedFiles
+            .filter(file => isCore(file.filename))
+            .map(file => file.filename);
+          
+          // If no core files, exit
+          if (coreFiles.length === 0) {
+            console.log('No core framework files found in this PR.');
+            process.exit(0);
+          }
+          
+          console.log(`Found ${coreFiles.length} core framework files.`);
+          
+          // Add the "CORE FRAMEWORK" label
+          execSync(`curl -s -X POST -H "Authorization: token ${token}" -H "Accept: application/vnd.github.v3+json" https://api.github.com/repos/${owner}/${repo}/issues/${prNumber}/labels -d '{"labels":["CORE FRAMEWORK"]}'`);
+          console.log('Added "CORE FRAMEWORK" label to PR.');
+          
+          // Get current reviewers
+          const prDataOutput = execSync(`curl -s -H "Authorization: token ${token}" https://api.github.com/repos/${owner}/${repo}/pulls/${prNumber}`).toString();
+          const prData = JSON.parse(prDataOutput);
+          
+          const currentReviewers = prData.requested_reviewers ? prData.requested_reviewers.map(reviewer => reviewer.login) : [];
+          
+          // Add reviewers if needed
+          if (coreReviewers) {
+            const reviewersToAdd = coreReviewers.split(',')
+              .map(r => r.trim())
+              .filter(reviewer => !currentReviewers.includes(reviewer));
+            
+            if (reviewersToAdd.length > 0) {
+              const reviewersJson = JSON.stringify({ reviewers: reviewersToAdd });
+              execSync(`curl -s -X POST -H "Authorization: token ${token}" -H "Accept: application/vnd.github.v3+json" https://api.github.com/repos/${owner}/${repo}/pulls/${prNumber}/requested_reviewers -d '${reviewersJson}'`);
+              console.log(`Added reviewers: ${reviewersToAdd.join(', ')}`);
+            } else {
+              console.log('All core reviewers are already added to the PR.');
+            }
+          }
+          
+          // Create comment with list of core files
+          const filesList = coreFiles.map(file => `- \`${file}\``).join('\\n');
+          const comment = `## Core Framework Files Detected\\n\\nThis PR contains changes to the following core framework files:\\n\\n${filesList}\\n\\nThis PR has been labeled as a "CORE FRAMEWORK" change and appropriate reviewers have been notified.`;
+          
+          execSync(`curl -s -X POST -H "Authorization: token ${token}" -H "Accept: application/vnd.github.v3+json" https://api.github.com/repos/${owner}/${repo}/issues/${prNumber}/comments -d '{"body":"${comment}"}'`);
+          console.log('Added comment with list of core files.');
+          EOF
+
+      - name: Run core check script
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CORE_REVIEWERS: ${{ secrets.CORE_REVIEWERS }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: node .github/scripts/check-core-files.js 

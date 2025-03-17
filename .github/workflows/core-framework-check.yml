@@ -17,33 +17,32 @@ jobs:
         id: changed-files
         uses: tj-actions/changed-files@v35
         with:
-          files_yaml: |
-            core:
-              - 'blocks/*/*.css'
-              - 'blocks/*/*.js'
-              - 'blocks/*/slots/*.js'
-              - 'scripts/**/*.js'
-              - 'styles/*.css'
-              - 'templates/*/*.css'
-              - 'templates/*/*.js'
-              - 'theme-tools/*.*'
-              - 'tools/**/*.*'
-              - 'react-app/api/**'
-              - 'react-app/context/**'
-              - 'react-app/library/**'
-              - 'react-app/shared/**'
-              - 'react-app/store/**'
-              - 'react-app/utils/**'
-              - 'react-app/app/*/*.css'
-              - 'react-app/app/*/*.js'
-              - 'react-app/app/*/components/**'
+          files: |
+            blocks/*/*.css
+            blocks/*/*.js
+            blocks/*/slots/*.js
+            scripts/**/*.js
+            styles/*.css
+            templates/*/*.css
+            templates/*/*.js
+            theme-tools/*.*
+            tools/**/*.*
+            react-app/api/**
+            react-app/context/**
+            react-app/library/**
+            react-app/shared/**
+            react-app/store/**
+            react-app/utils/**
+            react-app/app/*/*.css
+            react-app/app/*/*.js
+            react-app/app/*/components/**
 
       - name: Check if core files were changed
         id: check-core
         run: |
-          if [[ "${{ steps.changed-files.outputs.core_any_changed }}" == "true" ]]; then
+          if [[ "${{ steps.changed-files.outputs.any_changed }}" == "true" ]]; then
             echo "core_files_changed=true" >> $GITHUB_OUTPUT
-            echo "core_files=${{ steps.changed-files.outputs.core_all_changed_files }}" >> $GITHUB_OUTPUT
+            echo "core_files=${{ steps.changed-files.outputs.all_changed_files }}" >> $GITHUB_OUTPUT
           else
             echo "core_files_changed=false" >> $GITHUB_OUTPUT
           fi

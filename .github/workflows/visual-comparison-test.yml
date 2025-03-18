@@ -73,11 +73,17 @@ jobs:
           in_visual_section && /^- Brand:/ { 
             brand=$2; 
             gsub(/^[ \t]+|[ \t]+$/, "", brand);
+            # Escape special characters for JSON
+            gsub(/&/, "\\\\&", brand);
+            gsub(/"/, "\\\\\"", brand);
           }
           
           in_visual_section && /^- PageType:/ { 
             pageType=$2; 
             gsub(/^[ \t]+|[ \t]+$/, "", pageType);
+            # Escape special characters for JSON
+            gsub(/&/, "\\\\&", pageType);
+            gsub(/"/, "\\\\\"", pageType);
           }
           
           in_visual_section && /^- Baseline:/ { 
@@ -137,8 +143,12 @@ jobs:
           BASELINE="${{ github.event.inputs.baseline }}"
           MODIFIED="${{ github.event.inputs.modified }}"
           
+          # Escape special characters for JSON
+          BRAND_ESCAPED=$(echo "$BRAND" | sed 's/&/\\&/g; s/"/\\"/g')
+          PAGE_TYPE_ESCAPED=$(echo "$PAGE_TYPE" | sed 's/&/\\&/g; s/"/\\"/g')
+          
           # Create JSON array with the manually provided URLs
-          URL_PAIR="[{ \"brand\": \"${BRAND:-manual}\", \"pageType\": \"${PAGE_TYPE:-page}\", \"baseline\": \"$BASELINE\", \"modified\": \"$MODIFIED\" }]"
+          URL_PAIR="[{ \"brand\": \"${BRAND_ESCAPED:-manual}\", \"pageType\": \"${PAGE_TYPE_ESCAPED:-page}\", \"baseline\": \"$BASELINE\", \"modified\": \"$MODIFIED\" }]"
           
           echo "url_pairs=$URL_PAIR" >> $GITHUB_OUTPUT
           echo "Manual URL pair: $URL_PAIR"
@@ -210,10 +220,14 @@ jobs:
           echo "Running ${{ matrix.viewport }} regression test..."
           
           # Create cypress.env.json file with the required environment variables
+          # Unescape any escaped characters in the brand and page type
+          BRAND=$(echo "${{ matrix.pair.brand }}" | sed 's/\\&/\&/g; s/\\"/"/g')
+          PAGE_TYPE=$(echo "${{ matrix.pair.pageType }}" | sed 's/\\&/\&/g; s/\\"/"/g')
+          
           cat > cypress.env.json << EOL
           {
-            "Brandcode": "${{ matrix.pair.brand }}",
-            "PageType": "${{ matrix.pair.pageType }}",
+            "Brandcode": "$BRAND",
+            "PageType": "$PAGE_TYPE",
             "URL_1": "${{ matrix.pair.baseline }}",
             "URL_2": "${{ matrix.pair.modified }}"
           }

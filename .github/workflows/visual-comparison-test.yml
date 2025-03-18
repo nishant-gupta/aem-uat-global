@@ -171,12 +171,13 @@ jobs:
   visual-test:
     needs: extract-urls
     runs-on: ubuntu-latest
+    timeout-minutes: 30  # Added timeout to ensure tests have enough time to complete
     if: ${{ needs.extract-urls.outputs.url_pairs != '[]' }}
     strategy:
       fail-fast: false
       matrix:
         pair: ${{ fromJson(needs.extract-urls.outputs.url_pairs) }}
-        viewport: [mobile, tablet, desktop]
+        viewport: [desktop, tablet, mobile]
     
     steps:
       - name: Checkout Repository
@@ -192,99 +193,43 @@ jobs:
         run: |
           npm ci || npm install
           npm install -g cypress
-          npm install cypress-visual-regression cypress-multi-reporters mochawesome mochawesome-merge mochawesome-report-generator
 
-      - name: Create Cypress Config
+      - name: Print Test Information
         run: |
-          cat > cypress.config.js << 'EOL'
-          const { defineConfig } = require('cypress');
-          const { configureVisualRegression } = require('cypress-visual-regression');
-
-          module.exports = defineConfig({
-            e2e: {
-              setupNodeEvents(on, config) {
-                configureVisualRegression(on, config);
-                return config;
-              },
-              baseUrl: 'https://example.com',
-              specPattern: 'cypress/e2e/**/*.cy.{js,jsx,ts,tsx}',
-              viewportWidth: 1280,
-              viewportHeight: 720,
-              video: false,
-            },
-          });
-          EOL
-
-      - name: Create Cypress Test
-        run: |
-          mkdir -p cypress/e2e
-          mkdir -p cypress/screenshots
-          mkdir -p cypress/fixtures
-          
-          # Set viewport dimensions based on matrix
-          if [ "${{ matrix.viewport }}" == "mobile" ]; then
-            WIDTH=375
-            HEIGHT=667
-          elif [ "${{ matrix.viewport }}" == "tablet" ]; then
-            WIDTH=768
-            HEIGHT=1024
-          else
-            WIDTH=1280
-            HEIGHT=800
-          fi
-          
-          # Create test file
-          cat > cypress/e2e/visual-comparison-${{ matrix.pair.brand }}-${{ matrix.pair.pageType }}-${{ matrix.viewport }}.cy.js << EOL
-          describe('Visual Comparison - ${{ matrix.pair.brand }} - ${{ matrix.pair.pageType }} - ${{ matrix.viewport }}', () => {
-            const viewportWidth = ${WIDTH};
-            const viewportHeight = ${HEIGHT};
-            
-            beforeEach(() => {
-              cy.viewport(viewportWidth, viewportHeight);
-            });
-            
-            it('Baseline: captures screenshot of baseline URL', () => {
-              cy.visit('${{ matrix.pair.baseline }}');
-              // Wait for page to be fully loaded
-              cy.wait(2000);
-              cy.document().then((doc) => {
-                // Scroll through page to ensure all lazy-loaded elements are loaded
-                cy.scrollTo('bottom', { duration: 1000 });
-                cy.scrollTo('top', { duration: 500 });
-                cy.wait(1000);
-              });
-              cy.compareSnapshot('baseline-${{ matrix.viewport }}', {
-                capture: 'fullPage',
-                errorThreshold: 0.1
-              });
-            });
-            
-            it('Modified: captures screenshot of modified URL', () => {
-              cy.visit('${{ matrix.pair.modified }}');
-              // Wait for page to be fully loaded
-              cy.wait(2000);
-              cy.document().then((doc) => {
-                // Scroll through page to ensure all lazy-loaded elements are loaded
-                cy.scrollTo('bottom', { duration: 1000 });
-                cy.scrollTo('top', { duration: 500 });
-                cy.wait(1000);
-              });
-              cy.compareSnapshot('modified-${{ matrix.viewport }}', {
-                capture: 'fullPage',
-                errorThreshold: 0.1
-              });
-            });
-          });
-          EOL
+          echo "Running visual test for:"
+          echo "Brand: ${{ matrix.pair.brand }}"
+          echo "Page Type: ${{ matrix.pair.pageType }}"
+          echo "Viewport: ${{ matrix.viewport }}"
+          echo "Baseline URL: ${{ matrix.pair.baseline }}"
+          echo "Modified URL: ${{ matrix.pair.modified }}"
 
       - name: Run Cypress Tests
         id: cypress
         continue-on-error: true
         run: |
-          npx cypress run --spec "cypress/e2e/visual-comparison-${{ matrix.pair.brand }}-${{ matrix.pair.pageType }}-${{ matrix.viewport }}.cy.js"
+          echo "Running ${{ matrix.viewport }} regression test..."
+          
+          # Create cypress.env.json file with the required environment variables
+          cat > cypress.env.json << EOL
+          {
+            "Brandcode": "${{ matrix.pair.brand }}",
+            "PageType": "${{ matrix.pair.pageType }}",
+            "URL_1": "${{ matrix.pair.baseline }}",
+            "URL_2": "${{ matrix.pair.modified }}"
+          }
+          EOL
+          
+          echo "Created cypress.env.json with content:"
+          cat cypress.env.json
+          
+          # Run the appropriate test file based on viewport
+          npx cypress run --browser chrome --headless --spec "cypress/e2e/regression-${{ matrix.viewport }}.cy.js"
+          
+          TEST_EXIT_CODE=$?
+          echo "Test exit code: $TEST_EXIT_CODE"
           
           # Check if diff images were created (indicating visual differences)
-          DIFF_COUNT=$(find cypress/screenshots -name "*diff.png" | wc -l)
+          DIFF_COUNT=$(find cypress/screenshots -name "*diff*.png" | wc -l)
           if [ $DIFF_COUNT -gt 0 ]; then
             echo "Visual differences detected in $DIFF_COUNT screenshots"
             echo "has_diffs=true" >> $GITHUB_OUTPUT
@@ -292,6 +237,9 @@ jobs:
             echo "No visual differences detected"
             echo "has_diffs=false" >> $GITHUB_OUTPUT
           fi
+          
+          # Extract mismatch percentage from logs if available
+          MISMATCH_PERCENTAGE=$(grep -o "Mismatch: [0-9.]*%" cypress/logs/regression-${{ matrix.viewport }}.log 2>/dev/null | tail -1 | cut -d' ' -f2 || echo "Unknown")
           
           # Create result summary
           mkdir -p test-results
@@ -301,9 +249,24 @@ jobs:
             \"viewport\": \"${{ matrix.viewport }}\",
             \"baseline\": \"${{ matrix.pair.baseline }}\",
             \"modified\": \"${{ matrix.pair.modified }}\",
-            \"status\": \"$([ $? -eq 0 ] && echo 'success' || echo 'failure')\",
-            \"has_diffs\": \"$([ $DIFF_COUNT -gt 0 ] && echo 'true' || echo 'false')\"
+            \"status\": \"$([ $TEST_EXIT_CODE -eq 0 ] && echo 'success' || echo 'failure')\",
+            \"has_diffs\": \"$([ $DIFF_COUNT -gt 0 ] && echo 'true' || echo 'false')\",
+            \"mismatch\": \"$MISMATCH_PERCENTAGE\"
           }" > test-results/result-${{ matrix.pair.brand }}-${{ matrix.pair.pageType }}-${{ matrix.viewport }}.json
+          
+          # Log test completion
+          echo "✅ Test for ${{ matrix.viewport }} viewport completed, results saved to test-results/result-${{ matrix.pair.brand }}-${{ matrix.pair.pageType }}-${{ matrix.viewport }}.json"
+
+      - name: Verify Test Completion
+        run: |
+          echo "Verifying test completion for ${{ matrix.viewport }} viewport..."
+          if [ -f "test-results/result-${{ matrix.pair.brand }}-${{ matrix.pair.pageType }}-${{ matrix.viewport }}.json" ]; then
+            echo "✅ Test for ${{ matrix.viewport }} viewport completed successfully"
+            cat "test-results/result-${{ matrix.pair.brand }}-${{ matrix.pair.pageType }}-${{ matrix.viewport }}.json"
+          else
+            echo "❌ Test results not found for ${{ matrix.viewport }} viewport"
+            exit 1
+          fi
 
       - name: Upload Screenshots
         uses: actions/upload-artifact@v4
@@ -314,8 +277,42 @@ jobs:
             test-results/*.json
           retention-days: 14
 
-  report-results:
+  verify-viewport-coverage:
     needs: visual-test
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Download Test Results
+        uses: actions/download-artifact@v4
+        with:
+          path: ./artifacts
+
+      - name: Verify All Viewport Tests
+        run: |
+          echo "Verifying tests for all viewports..."
+          
+          # Check each required viewport
+          for viewport in mobile tablet desktop; do
+            COUNT=$(find ./artifacts -name "result-*-${viewport}.json" | wc -l)
+            if [ $COUNT -eq 0 ]; then
+              echo "::warning::⚠️ No test results found for $viewport viewport!"
+              MISSING_VIEWPORTS="${MISSING_VIEWPORTS} ${viewport}"
+            else
+              echo "✅ Found $COUNT test result(s) for $viewport viewport"
+            fi
+          done
+          
+          # Exit with error if any viewport is missing
+          if [ ! -z "$MISSING_VIEWPORTS" ]; then
+            echo "::error::❌ Missing test results for viewports:${MISSING_VIEWPORTS}"
+            echo "missing_viewports=${MISSING_VIEWPORTS}" >> $GITHUB_OUTPUT
+            exit 1
+          else
+            echo "✅ All viewport tests (mobile, tablet, desktop) completed successfully!"
+          fi
+
+  report-results:
+    needs: [visual-test, verify-viewport-coverage]
     runs-on: ubuntu-latest
     if: always()
     steps:
@@ -352,6 +349,25 @@ jobs:
           
           # Process all result files
           OVERALL_STATUS="success"
+          MISSING_VIEWPORTS=""
+          
+          # Check for completeness of viewport tests
+          DESKTOP_COUNT=$(find ./artifacts -name "result-*-desktop.json" | wc -l)
+          TABLET_COUNT=$(find ./artifacts -name "result-*-tablet.json" | wc -l)
+          MOBILE_COUNT=$(find ./artifacts -name "result-*-mobile.json" | wc -l)
+          
+          if [ $DESKTOP_COUNT -eq 0 ] || [ $TABLET_COUNT -eq 0 ] || [ $MOBILE_COUNT -eq 0 ]; then
+            echo "⚠️ **Warning: Not all viewport tests completed!**" >> report.md
+            echo "" >> report.md
+            [ $DESKTOP_COUNT -eq 0 ] && echo "- ❌ Desktop tests missing" >> report.md
+            [ $TABLET_COUNT -eq 0 ] && echo "- ❌ Tablet tests missing" >> report.md
+            [ $MOBILE_COUNT -eq 0 ] && echo "- ❌ Mobile tests missing" >> report.md
+            echo "" >> report.md
+            OVERALL_STATUS="failure"
+          else
+            echo "✅ **All viewport tests completed successfully!**" >> report.md
+            echo "" >> report.md
+          fi
           
           for resultFile in $(find ./artifacts -name "result-*.json"); do
             BRAND=$(jq -r '.brand' "$resultFile")

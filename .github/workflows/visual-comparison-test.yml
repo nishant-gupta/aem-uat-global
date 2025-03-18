@@ -645,6 +645,10 @@ jobs:
             OVERALL_STATUS="success"
           fi
           
+          # Add a note about match percentage threshold
+          echo "> Note: Tests with a match percentage below 85% are automatically marked as failed, regardless of test execution status." >> report.md
+          echo "" >> report.md
+          
           # Now add the table with separate Status icon column
           echo "| Pass/Fail | Brand | Page Type | Viewport | Baseline | Modified | Match % | Differences |" >> report.md
           echo "|:------:|-------|-----------|----------|----------|----------|---------|------------|" >> report.md
@@ -660,22 +664,25 @@ jobs:
             HAS_DIFFS=$(jq -r '.has_diffs' "$resultFile")
             MISMATCH=$(jq -r '.mismatch' "$resultFile")
             
-            # Calculate match percentage (100 - mismatch)
+            # Calculate match percentage
             if [[ "$MISMATCH" == "Unknown" ]]; then
               MATCH_PERCENT="N/A"
+              MATCH_VALUE="0"
             else
               # Remove the % sign from mismatch if present
               MISMATCH_VALUE=${MISMATCH//%/}
               # Check if it's a valid number
               if [[ "$MISMATCH_VALUE" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
-                MATCH_PERCENT=$(awk "BEGIN {printf \"%.2f%%\", 100-$MISMATCH_VALUE}")
+                MATCH_VALUE=$(awk "BEGIN {printf \"%.2f\", 100-$MISMATCH_VALUE}")
+                MATCH_PERCENT="${MATCH_VALUE}%"
               else
                 MATCH_PERCENT="N/A"
+                MATCH_VALUE="0"
               fi
             fi
             
             # Set icon and status based on test results
-            if [ "$STATUS" == "success" ]; then
+            if [ "$STATUS" == "success" ] && ([ "$MATCH_VALUE" == "N/A" ] || [ $(awk "BEGIN {print ($MATCH_VALUE >= 85)}") -eq 1 ]); then
                 STATUS_ICON="✓"
                 STATUS_HTML="<span>✅</span>"
                 STATUS_TEXT="Passed"
@@ -718,6 +725,10 @@ jobs:
             echo "The report could not be properly formatted as a table. Here's a simplified version:" >> fallback_report.md
             echo "" >> fallback_report.md
             
+            # Add the note about match percentage threshold
+            echo "> Note: Tests with a match percentage below 85% are automatically marked as failed, regardless of test execution status." >> fallback_report.md
+            echo "" >> fallback_report.md
+            
             # Add a simple list of results for fallback report
             for resultFile in $(find ./artifacts -name "result-*.json"); do
               BRAND=$(jq -r '.brand' "$resultFile")
@@ -730,26 +741,24 @@ jobs:
               # Calculate match percentage
               if [[ "$MISMATCH" == "Unknown" ]]; then
                 MATCH_PERCENT="N/A"
+                MATCH_VALUE="0"
               else
                 # Remove the % sign from mismatch if present
                 MISMATCH_VALUE=${MISMATCH//%/}
                 # Check if it's a valid number
                 if [[ "$MISMATCH_VALUE" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
-                  MATCH_PERCENT=$(awk "BEGIN {printf \"%.2f%%\", 100-$MISMATCH_VALUE}")
+                  MATCH_VALUE=$(awk "BEGIN {printf \"%.2f\", 100-$MISMATCH_VALUE}")
+                  MATCH_PERCENT="${MATCH_VALUE}%"
                 else
                   MATCH_PERCENT="N/A"
+                  MATCH_VALUE="0"
                 fi
               fi
               
               # Set status indicators
-              if [ "$STATUS" == "success" ]; then
-                if [ "$HAS_DIFFS" == "true" ]; then
-                  STATUS_BADGE="![Failed](https://img.shields.io/badge/-Failed-red)"
-                  STATUS_TEXT="Failed"
-                else
-                  STATUS_BADGE="![Passed](https://img.shields.io/badge/-Passed-green)"
-                  STATUS_TEXT="Passed"
-                fi
+              if [ "$STATUS" == "success" ] && ([ "$MATCH_VALUE" == "N/A" ] || [ $(awk "BEGIN {print ($MATCH_VALUE >= 85)}") -eq 1 ]); then
+                STATUS_BADGE="![Passed](https://img.shields.io/badge/-Passed-green)"
+                STATUS_TEXT="Passed"
               else
                 STATUS_BADGE="![Failed](https://img.shields.io/badge/-Failed-red)"
                 STATUS_TEXT="Failed"

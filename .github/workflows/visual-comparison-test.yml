@@ -596,18 +596,12 @@ jobs:
             exit 0
           fi
           
-          echo "| Brand | Page Type | Viewport | Baseline | Modified | Status | Differences |" >> report.md
-          echo "|-------|-----------|----------|----------|----------|--------|------------|" >> report.md
-          
-          # Process all result files
-          OVERALL_STATUS="success"
-          MISSING_VIEWPORTS=""
-          
           # Check for completeness of viewport tests
           DESKTOP_COUNT=$(find ./artifacts -name "result-*-desktop.json" | wc -l)
           TABLET_COUNT=$(find ./artifacts -name "result-*-tablet.json" | wc -l)
           MOBILE_COUNT=$(find ./artifacts -name "result-*-mobile.json" | wc -l)
           
+          # First add the status message BEFORE the table
           if [ $DESKTOP_COUNT -eq 0 ] || [ $TABLET_COUNT -eq 0 ] || [ $MOBILE_COUNT -eq 0 ]; then
             echo "⚠️ **Warning: Not all viewport tests completed!**" >> report.md
             echo "" >> report.md
@@ -619,8 +613,14 @@ jobs:
           else
             echo "✅ **All viewport tests completed successfully!**" >> report.md
             echo "" >> report.md
+            OVERALL_STATUS="success"
           fi
           
+          # Now add the table
+          echo "| Brand | Page Type | Viewport | Baseline | Modified | Status | Differences |" >> report.md
+          echo "|-------|-----------|----------|----------|----------|--------|------------|" >> report.md
+          
+          # Process all result files for table rows
           for resultFile in $(find ./artifacts -name "result-*.json"); do
             BRAND=$(jq -r '.brand' "$resultFile")
             PAGE_TYPE=$(jq -r '.pageType' "$resultFile")
@@ -649,7 +649,8 @@ jobs:
             # Get artifact name for linking
             ARTIFACT_NAME="visual-test-${BRAND}-${PAGE_TYPE}-${VIEWPORT}"
             
-            echo "| $BRAND | $PAGE_TYPE | $VIEWPORT | [Link]($BASELINE) | [Link]($MODIFIED) | $STATUS_EMOJI $STATUS_TEXT | [View Screenshots](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})" >> report.md
+            # Ensure proper cell formatting with pipes at beginning and end
+            echo "| $BRAND | $PAGE_TYPE | $VIEWPORT | [Link]($BASELINE) | [Link]($MODIFIED) | $STATUS_EMOJI $STATUS_TEXT | [View Screenshots](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}) |" >> report.md
           done
           
           echo "" >> report.md
@@ -662,11 +663,110 @@ jobs:
             echo "overall_status=failure" >> $GITHUB_OUTPUT
           fi
           
-          echo "Report content generated:"
-          cat report.md
-          echo "-----------------------------"
           echo "Report file size: $(wc -c < report.md) bytes"
+          
+          # Verify the report has proper markdown formatting
+          # Check for table formatting
+          TABLE_HEADER_COUNT=$(grep -c "^|.*|$" report.md)
+          if [ "$TABLE_HEADER_COUNT" -lt 2 ]; then
+            echo "Warning: Table might not be properly formatted. Found $TABLE_HEADER_COUNT table rows."
+            # Add a fallback simple report if table formatting is missing
+            echo "### 🖼️ Visual Comparison Test Results (Fallback Format)" > fallback_report.md
+            echo "" >> fallback_report.md
+            echo "The report could not be properly formatted as a table. Here's a simplified version:" >> fallback_report.md
+            echo "" >> fallback_report.md
+            
+            # Add a simple list of results
+            for resultFile in $(find ./artifacts -name "result-*.json"); do
+              BRAND=$(jq -r '.brand' "$resultFile")
+              PAGE_TYPE=$(jq -r '.pageType' "$resultFile")
+              VIEWPORT=$(jq -r '.viewport' "$resultFile")
+              STATUS=$(jq -r '.status' "$resultFile")
+              HAS_DIFFS=$(jq -r '.has_diffs' "$resultFile")
+              
+              # Set emoji based on status
+              if [ "$STATUS" == "success" ]; then
+                if [ "$HAS_DIFFS" == "true" ]; then
+                  STATUS_EMOJI="⚠️"
+                  STATUS_TEXT="Differences"
+                else
+                  STATUS_EMOJI="✅"
+                  STATUS_TEXT="Passed"
+                fi
+              else
+                STATUS_EMOJI="❌"
+                STATUS_TEXT="Failed"
+              fi
+              
+              echo "- **${BRAND} - ${PAGE_TYPE} - ${VIEWPORT}**: ${STATUS_EMOJI} ${STATUS_TEXT}" >> fallback_report.md
+            done
+            
+            echo "" >> fallback_report.md
+            echo "📎 **[View Full Results](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})**" >> fallback_report.md
+            
+            # Use the fallback report instead
+            cp fallback_report.md report.md
+            echo "Using fallback report format instead of table"
+          else
+            echo "Report table format looks valid. Found $TABLE_HEADER_COUNT table rows."
+          fi
+          
+          # Store report length for output
+          REPORT_LENGTH=$(wc -c < report.md)
+          echo "report_length=$REPORT_LENGTH" >> $GITHUB_OUTPUT
+          echo "overall_status=$OVERALL_STATUS" >> $GITHUB_OUTPUT
+          
           echo "Report is ready for commenting"
+
+      - name: Verify Report Formatting
+        if: github.event_name == 'pull_request'
+        run: |
+          echo "Performing report diagnostics before posting..."
+          
+          # Check report file presence and size
+          if [ ! -f "report.md" ]; then
+            echo "ERROR: report.md file is missing!"
+            exit 1
+          fi
+          
+          REPORT_SIZE=$(wc -c < report.md)
+          echo "Report size: $REPORT_SIZE bytes"
+          
+          # Check if report is empty
+          if [ "$REPORT_SIZE" -lt 10 ]; then
+            echo "ERROR: Report appears to be empty or too small"
+            exit 1
+          fi
+          
+          # Preview report content (truncated)
+          echo "Report content preview (first 20 lines):"
+          head -n 20 report.md
+          echo "..."
+          
+          # Validate table structure
+          TABLE_ROWS=$(grep -c "^|" report.md)
+          echo "Table rows found: $TABLE_ROWS"
+          
+          # Check for markdown formatting elements
+          echo "Markdown headers: $(grep -c "^#" report.md)"
+          echo "Markdown tables: $(grep -c "^|.*|$" report.md)"
+          echo "Markdown links: $(grep -c "\[.*\](.*)" report.md)"
+          
+          # Create a JSON test payload to verify escaping
+          echo "Testing JSON payload creation..."
+          SAMPLE_CONTENT=$(head -n 10 report.md)
+          ESCAPED_SAMPLE=$(echo "$SAMPLE_CONTENT" | awk '{printf "%s\\n", $0}' | sed 's/"/\\"/g')
+          echo "{\"body\": \"$ESCAPED_SAMPLE\"}" > test_payload.json
+          
+          # Validate JSON payload
+          if jq empty test_payload.json 2>/dev/null; then
+            echo "✅ JSON payload format is valid"
+          else
+            echo "❌ JSON payload format is invalid"
+            echo "This may cause issues with the comment posting"
+          fi
+          
+          echo "Report diagnostics completed"
 
       - name: Debug GitHub Token
         if: github.event_name == 'pull_request'
@@ -677,7 +777,7 @@ jobs:
           echo "Repo: ${{ github.repository }}"
           echo "Event name: ${{ github.event_name }}"
 
-      - name: Comment on PR
+      - name: Comment on PR with GitHub Script
         id: comment-with-github-script
         if: github.event_name == 'pull_request'
         uses: actions/github-script@v6
@@ -685,35 +785,50 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const fs = require('fs');
-            let reportContent = fs.readFileSync('report.md', 'utf8');
-            
-            // GitHub has a comment size limit (around 65536 characters)
-            // Truncate if necessary to avoid errors
-            const MAX_COMMENT_LENGTH = 60000;
-            if (reportContent.length > MAX_COMMENT_LENGTH) {
-              console.log(`Comment is too long (${reportContent.length} characters). Truncating...`);
-              reportContent = reportContent.substring(0, MAX_COMMENT_LENGTH) + 
-                '\n\n**⚠️ Comment truncated due to GitHub size limits. See full results in the action logs.**';
-            }
-            
-            console.log(`Attempting to post comment to PR #${context.issue.number}`);
-            console.log(`Comment length: ${reportContent.length} characters`);
-            
             try {
-              const result = await github.rest.issues.createComment({
-                issue_number: context.issue.number,
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                body: reportContent
-              });
-              console.log(`Comment posted successfully with ID: ${result.data.id}`);
-              return true;
+              const fs = require('fs');
+              console.log('Reading report.md file');
+              const reportContent = fs.readFileSync('report.md', 'utf8');
+              
+              // Ensure all special Markdown characters are properly preserved
+              console.log(`Attempting to post comment to PR #${context.issue.number}`);
+              console.log(`Comment length: ${reportContent.length} characters`);
+              
+              if (reportContent.length > 65000) {
+                console.log('Warning: Comment is very large and may be truncated by GitHub');
+                // If too large, truncate and add a note
+                const truncatedContent = reportContent.substring(0, 65000) + 
+                  "\n\n**Note: This report was truncated because it exceeded GitHub's comment size limit.**" +
+                  "\n\n📎 **[View Full Results](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})** 📎";
+                
+                await github.rest.issues.createComment({
+                  issue_number: context.issue.number,
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  body: truncatedContent
+                });
+                console.log('Posted truncated comment successfully');
+              } else {
+                // Post the full comment
+                const result = await github.rest.issues.createComment({
+                  issue_number: context.issue.number,
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  body: reportContent
+                });
+                console.log(`Comment posted successfully with ID: ${result.data.id}`);
+              }
             } catch (error) {
-              console.error('Error posting comment:');
-              console.error(error);
-              console.error(`Error message: ${error.message}`);
-              return false;
+              console.error('Error posting comment with GitHub Script:');
+              console.error(error.message);
+              if (error.stack) console.error(error.stack);
+              
+              // Write error details to file for debugging
+              fs.writeFileSync('github-script-error.log', 
+                `Error: ${error.message}\n\nStack: ${error.stack || 'No stack trace available'}`);
+              
+              // Throw the error to trigger the fallback mechanism
+              throw error;
             }
 
       # Fallback comment mechanism if the github-script approach fails
@@ -726,26 +841,37 @@ jobs:
           issue-number: ${{ github.event.pull_request.number }}
           body-file: report.md
           token: ${{ secrets.GITHUB_TOKEN }}
+          edit-mode: replace
 
-      # Final fallback using direct REST API call
-      - name: Comment on PR (REST API Fallback)
-        if: github.event_name == 'pull_request' && steps.comment-with-github-script.outcome == 'failure' && steps.comment-fallback.outcome == 'failure'
+      # Final fallback using direct REST API call with simplified content
+      - name: Comment on PR (Fallback using REST API)
+        if: failure() && github.event_name == 'pull_request'
         run: |
-          # Prepare a simplified report as fallback
-          echo "### 🖼️ Visual Comparison Test Results (Simplified)" > simple_report.md
-          echo "" >> simple_report.md
-          echo "A detailed report couldn't be posted automatically. Please check the action logs for full results." >> simple_report.md
-          echo "" >> simple_report.md
-          echo "Overall status: ${{ steps.report.outputs.overall_status }}" >> simple_report.md
-          echo "" >> simple_report.md
-          echo "📎 **[View Full Results](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})**" >> simple_report.md
+          # Read the report content
+          REPORT_CONTENT=$(cat report.md)
           
-          # Use curl to post the comment with the REST API
+          # Properly escape the content for JSON
+          # Replace newlines with \n and escape double quotes
+          ESCAPED_CONTENT=$(echo "$REPORT_CONTENT" | awk '{printf "%s\\n", $0}' | sed 's/"/\\"/g')
+          
+          # Create a temporary JSON file for the payload
+          echo "{" > payload.json
+          echo "  \"body\": \"$ESCAPED_CONTENT\"" >> payload.json
+          echo "}" >> payload.json
+          
+          echo "Payload preview (first 200 chars):"
+          head -c 200 payload.json
+          echo "..."
+          
+          # Try posting using the GitHub REST API
           curl -X POST \
             -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
             -H "Accept: application/vnd.github.v3+json" \
-            "https://api.github.com/repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments" \
-            -d "{\"body\": $(cat simple_report.md | jq -Rs .)}"
+            -H "Content-Type: application/json" \
+            --data @payload.json \
+            "https://api.github.com/repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments"
+          
+          echo "Comment posted using GitHub REST API fallback"
 
       - name: Set PR Status
         if: github.event_name == 'pull_request'

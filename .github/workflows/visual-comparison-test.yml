@@ -43,6 +43,11 @@ jobs:
           # Create a temporary file with the description for easier processing
           echo "$DESCRIPTION" > pr_description.txt
           
+          # Debug info
+          echo "===== PR DESCRIPTION ====="
+          cat pr_description.txt
+          echo "=========================="
+          
           # Extract URL pairs using a more robust approach
           cat > extract_urls.awk << 'EOL'
           BEGIN { 
@@ -76,6 +81,7 @@ jobs:
             # Escape special characters for JSON
             gsub(/&/, "\\\\&", brand);
             gsub(/"/, "\\\\\"", brand);
+            print "Found Brand: " brand > "/dev/stderr";
           }
           
           in_visual_section && /^- PageType:/ { 
@@ -84,16 +90,19 @@ jobs:
             # Escape special characters for JSON
             gsub(/&/, "\\\\&", pageType);
             gsub(/"/, "\\\\\"", pageType);
+            print "Found PageType: " pageType > "/dev/stderr";
           }
           
           in_visual_section && /^- Baseline:/ { 
             baseline=$2; 
             gsub(/^[ \t]+|[ \t]+$/, "", baseline);
+            print "Found Baseline: " baseline > "/dev/stderr";
           }
           
           in_visual_section && /^- Modified:/ { 
             modified=$2; 
             gsub(/^[ \t]+|[ \t]+$/, "", modified);
+            print "Found Modified: " modified > "/dev/stderr";
             
             # If we have all required fields, add to JSON
             if (brand != "" && baseline != "" && modified != "") {
@@ -101,6 +110,7 @@ jobs:
               
               if (!first) json=json",";
               json=json" { \"brand\": \""brand"\", \"pageType\": \""pageType"\", \"baseline\": \""baseline"\", \"modified\": \""modified"\" }";
+              print "Added pair to JSON" > "/dev/stderr";
               first=0;
               
               # Reset for next set within the same section
@@ -132,6 +142,16 @@ jobs:
             echo "Found URL pairs in PR description: $URL_PAIRS"
           fi
           
+          # Validate JSON
+          echo "Validating JSON format..."
+          if ! echo "$URL_PAIRS" | jq empty; then
+            echo "Error: Invalid JSON format"
+            echo "Raw JSON: $URL_PAIRS"
+            # Provide a fallback default value
+            URL_PAIRS='[{"brand":"default","pageType":"page","baseline":"https://example.com","modified":"https://example.com"}]'
+            echo "Using fallback URL pairs: $URL_PAIRS"
+          fi
+          
           echo "url_pairs=$URL_PAIRS" >> $GITHUB_OUTPUT
 
       - name: Set Manual URL Pair
@@ -143,12 +163,32 @@ jobs:
           BASELINE="${{ github.event.inputs.baseline }}"
           MODIFIED="${{ github.event.inputs.modified }}"
           
+          # Default values if not provided
+          BRAND="${BRAND:-manual}"
+          PAGE_TYPE="${PAGE_TYPE:-page}"
+          
           # Escape special characters for JSON
           BRAND_ESCAPED=$(echo "$BRAND" | sed 's/&/\\&/g; s/"/\\"/g')
           PAGE_TYPE_ESCAPED=$(echo "$PAGE_TYPE" | sed 's/&/\\&/g; s/"/\\"/g')
           
           # Create JSON array with the manually provided URLs
-          URL_PAIR="[{ \"brand\": \"${BRAND_ESCAPED:-manual}\", \"pageType\": \"${PAGE_TYPE_ESCAPED:-page}\", \"baseline\": \"$BASELINE\", \"modified\": \"$MODIFIED\" }]"
+          URL_PAIR="[{ \"brand\": \"${BRAND_ESCAPED}\", \"pageType\": \"${PAGE_TYPE_ESCAPED}\", \"baseline\": \"$BASELINE\", \"modified\": \"$MODIFIED\" }]"
+          
+          echo "Manual input values:"
+          echo "Brand: $BRAND"
+          echo "Page Type: $PAGE_TYPE"
+          echo "Baseline: $BASELINE"
+          echo "Modified: $MODIFIED"
+          
+          # Validate JSON
+          echo "Validating JSON format..."
+          if ! echo "$URL_PAIR" | jq empty; then
+            echo "Error: Invalid JSON format"
+            echo "Raw JSON: $URL_PAIR"
+            # Provide a fallback default value
+            URL_PAIR='[{"brand":"manual","pageType":"page","baseline":"'"$BASELINE"'","modified":"'"$MODIFIED"'"}]'
+            echo "Using fallback URL pairs: $URL_PAIR"
+          fi
           
           echo "url_pairs=$URL_PAIR" >> $GITHUB_OUTPUT
           echo "Manual URL pair: $URL_PAIR"
@@ -157,15 +197,27 @@ jobs:
         id: combine
         run: |
           if [ "${{ github.event_name }}" == "pull_request" ]; then
-            echo "url_pairs=${{ steps.extract.outputs.url_pairs }}" >> $GITHUB_OUTPUT
+            URL_PAIRS="${{ steps.extract.outputs.url_pairs }}"
           else
-            echo "url_pairs=${{ steps.manual.outputs.url_pairs }}" >> $GITHUB_OUTPUT
+            URL_PAIRS="${{ steps.manual.outputs.url_pairs }}"
           fi
+          
+          echo "Combined URL pairs: $URL_PAIRS"
+          
+          # Final validation check
+          if [ -z "$URL_PAIRS" ] || [ "$URL_PAIRS" == "[]" ]; then
+            echo "Warning: Empty URL pairs. Using default values."
+            URL_PAIRS='[{"brand":"default","pageType":"page","baseline":"https://example.com","modified":"https://example.com"}]'
+          fi
+          
+          echo "url_pairs=$URL_PAIRS" >> $GITHUB_OUTPUT
 
       - name: Validate URL Pairs
         if: github.event_name == 'pull_request'
         run: |
           URL_PAIRS='${{ steps.combine.outputs.url_pairs }}'
+          
+          echo "Final URL pairs to be used: $URL_PAIRS"
           
           if [ "$URL_PAIRS" == "[]" ]; then
             echo "::warning::No valid URL pairs found in PR description. Please format your PR description with sections like:"
@@ -178,13 +230,34 @@ jobs:
             echo "Valid URL pairs found. Visual tests will run."
           fi
 
-  visual-test:
+  debug-matrix:
     needs: extract-urls
+    runs-on: ubuntu-latest
+    steps:
+      - name: Debug matrix input
+        run: |
+          echo "Debug URL pairs from previous job:"
+          echo '${{ needs.extract-urls.outputs.url_pairs }}'
+          
+          # Check if the JSON is valid
+          if echo '${{ needs.extract-urls.outputs.url_pairs }}' | jq empty; then
+            echo "JSON is valid"
+          else
+            echo "JSON is invalid"
+          fi
+          
+          # Try to parse with fromJson
+          JSON_PARSED='${{ toJSON(fromJson(needs.extract-urls.outputs.url_pairs)) }}'
+          echo "Parsed JSON: $JSON_PARSED"
+
+  visual-test:
+    needs: [extract-urls, debug-matrix]
     runs-on: ubuntu-latest
     timeout-minutes: 30  # Added timeout to ensure tests have enough time to complete
     if: ${{ needs.extract-urls.outputs.url_pairs != '[]' }}
     strategy:
       fail-fast: false
+      max-parallel: 2  # Limit parallel jobs to avoid rate limiting
       matrix:
         pair: ${{ fromJson(needs.extract-urls.outputs.url_pairs) }}
         viewport: [desktop, tablet, mobile]

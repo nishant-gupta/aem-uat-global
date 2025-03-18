@@ -48,89 +48,94 @@ jobs:
           cat pr_description.txt
           echo "=========================="
           
-          # Extract URL pairs using a more robust approach
-          cat > extract_urls.awk << 'EOL'
-          BEGIN { 
-            FS=": "; 
-            OFS=""; 
-            json="["; 
-            first=1;
-            brand="";
-            pageType="";
-            baseline="";
-            modified="";
-            in_visual_section=0;
-          }
+          # Process PR description section by section to extract test configurations
+          # This uses direct shell commands instead of awk
           
-          /^## Visual Test/ { 
-            in_visual_section=1;
-            # Reset values for new section
-            brand="";
-            pageType="";
-            baseline="";
-            modified="";
-          }
+          # First, process the file line by line to identify visual test sections
+          JSON_ARRAY="["
+          FIRST_ENTRY=true
           
-          /^##/ && !/^## Visual Test/ { 
-            in_visual_section=0; 
-          }
+          # Set initial state
+          IN_VISUAL_SECTION=false
+          BRAND=""
+          PAGETYPE="page" # Default value
+          BASELINE=""
+          MODIFIED=""
           
-          in_visual_section && /^- Brand:/ { 
-            brand=$2; 
-            gsub(/^[ \t]+|[ \t]+$/, "", brand);
-            # Escape special characters for JSON
-            gsub(/&/, "\\\\&", brand);
-            gsub(/"/, "\\\\\"", brand);
-            print "Found Brand: " brand > "/dev/stderr";
-          }
-          
-          in_visual_section && /^- PageType:/ { 
-            pageType=$2; 
-            gsub(/^[ \t]+|[ \t]+$/, "", pageType);
-            # Escape special characters for JSON
-            gsub(/&/, "\\\\&", pageType);
-            gsub(/"/, "\\\\\"", pageType);
-            print "Found PageType: " pageType > "/dev/stderr";
-          }
-          
-          in_visual_section && /^- Baseline:/ { 
-            baseline=$2; 
-            gsub(/^[ \t]+|[ \t]+$/, "", baseline);
-            print "Found Baseline: " baseline > "/dev/stderr";
-          }
-          
-          in_visual_section && /^- Modified:/ { 
-            modified=$2; 
-            gsub(/^[ \t]+|[ \t]+$/, "", modified);
-            print "Found Modified: " modified > "/dev/stderr";
+          # Process description line by line
+          while IFS= read -r line; do
+            # Detect section headers
+            if [[ "$line" =~ ^##\ Visual\ Test ]]; then
+              # Start a new visual test section
+              IN_VISUAL_SECTION=true
+              BRAND=""
+              PAGETYPE="page"
+              BASELINE=""
+              MODIFIED=""
+              echo "Found Visual Test section"
+            elif [[ "$line" =~ ^## ]]; then
+              # End current section if we were in one
+              IN_VISUAL_SECTION=false
+            fi
             
-            # If we have all required fields, add to JSON
-            if (brand != "" && baseline != "" && modified != "") {
-              if (pageType == "") pageType = "page";
+            # Process lines within a visual test section
+            if [ "$IN_VISUAL_SECTION" = true ]; then
+              # Extract brand
+              if [[ "$line" =~ ^-\ Brand: ]]; then
+                BRAND=$(echo "$line" | sed 's/^- Brand: \(.*\)$/\1/' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+                echo "Found Brand: $BRAND"
+              fi
               
-              if (!first) json=json",";
-              json=json" { \"brand\": \""brand"\", \"pageType\": \""pageType"\", \"baseline\": \""baseline"\", \"modified\": \""modified"\" }";
-              print "Added pair to JSON" > "/dev/stderr";
-              first=0;
+              # Extract page type
+              if [[ "$line" =~ ^-\ PageType: ]]; then
+                PAGETYPE=$(echo "$line" | sed 's/^- PageType: \(.*\)$/\1/' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+                echo "Found PageType: $PAGETYPE"
+              fi
               
-              # Reset for next set within the same section
-              brand="";
-              pageType="";
-              baseline="";
-              modified="";
-            }
-          }
+              # Extract baseline URL
+              if [[ "$line" =~ ^-\ Baseline: ]]; then
+                BASELINE=$(echo "$line" | sed 's/^- Baseline: \(.*\)$/\1/' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+                echo "Found Baseline: $BASELINE"
+              fi
+              
+              # Extract modified URL and create entry if all required fields are present
+              if [[ "$line" =~ ^-\ Modified: ]]; then
+                MODIFIED=$(echo "$line" | sed 's/^- Modified: \(.*\)$/\1/' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+                echo "Found Modified: $MODIFIED"
+                
+                # If we have all required fields, add to JSON
+                if [[ -n "$BRAND" && -n "$BASELINE" && -n "$MODIFIED" ]]; then
+                  # Escape special characters for JSON
+                  BRAND_ESCAPED=$(echo "$BRAND" | sed 's/"/\\"/g; s/&/\\&/g')
+                  PAGETYPE_ESCAPED=$(echo "$PAGETYPE" | sed 's/"/\\"/g; s/&/\\&/g')
+                  
+                  # Add comma if not the first entry
+                  if [ "$FIRST_ENTRY" = false ]; then
+                    JSON_ARRAY="$JSON_ARRAY,"
+                  else
+                    FIRST_ENTRY=false
+                  fi
+                  
+                  # Add entry to JSON array
+                  JSON_ARRAY="$JSON_ARRAY{\"brand\":\"$BRAND_ESCAPED\",\"pageType\":\"$PAGETYPE_ESCAPED\",\"baseline\":\"$BASELINE\",\"modified\":\"$MODIFIED\"}"
+                  echo "Added pair to JSON"
+                  
+                  # Reset for next potential entry in the same section
+                  BRAND=""
+                  PAGETYPE="page"
+                  BASELINE=""
+                  MODIFIED=""
+                fi
+              fi
+            fi
+          done < pr_description.txt
           
-          END { 
-            json=json" ]"; 
-            print json;
-          }
-          EOL
-          
-          URL_PAIRS=$(awk -f extract_urls.awk pr_description.txt)
+          # Complete the JSON array
+          JSON_ARRAY="$JSON_ARRAY]"
+          URL_PAIRS="$JSON_ARRAY"
           
           # Ensure valid JSON output
-          if [[ -z "$URL_PAIRS" || "$URL_PAIRS" == "[ ]" ]]; then
+          if [[ "$URL_PAIRS" == "[]" ]]; then
             echo "No URL pairs found in PR description. Please format your PR description with sections like:"
             echo "## Visual Test"
             echo "- Brand: BrandName"
@@ -140,43 +145,6 @@ jobs:
             URL_PAIRS="[]"
           else
             echo "Found URL pairs in PR description: $URL_PAIRS"
-          fi
-          
-          # Clean up the JSON (in case there are still format issues)
-          echo "Cleaning JSON format..."
-          BRAND_REGEX='"brand": "([^"]+)"'
-          PAGETYPE_REGEX='"pageType": "([^"]+)"'
-          BASELINE_REGEX='"baseline": "([^"]+)"'
-          MODIFIED_REGEX='"modified": "([^"]+)"'
-          
-          # Get the number of sections to process (count brand occurrences)
-          BRAND_COUNT=$(echo "$URL_PAIRS" | grep -o '"brand"' | wc -l)
-          
-          # If we found sections, rebuild the JSON carefully
-          if [ $BRAND_COUNT -gt 0 ]; then
-            NEW_JSON="["
-            
-            for (( i=1; i<=$BRAND_COUNT; i++ )); do
-              # Extract values
-              BRAND=$(echo "$URL_PAIRS" | grep -Po "$BRAND_REGEX" | sed -n "${i}p" | sed 's/"brand": "\(.*\)"/\1/')
-              PAGETYPE=$(echo "$URL_PAIRS" | grep -Po "$PAGETYPE_REGEX" | sed -n "${i}p" | sed 's/"pageType": "\(.*\)"/\1/')
-              BASELINE=$(echo "$URL_PAIRS" | grep -Po "$BASELINE_REGEX" | sed -n "${i}p" | sed 's/"baseline": "\(.*\)"/\1/')
-              MODIFIED=$(echo "$URL_PAIRS" | grep -Po "$MODIFIED_REGEX" | sed -n "${i}p" | sed 's/"modified": "\(.*\)"/\1/')
-              
-              # Add separator if not first item
-              if [ $i -gt 1 ]; then
-                NEW_JSON="$NEW_JSON,"
-              fi
-              
-              # Build properly formatted JSON
-              NEW_JSON="$NEW_JSON {\"brand\":\"$BRAND\",\"pageType\":\"$PAGETYPE\",\"baseline\":\"$BASELINE\",\"modified\":\"$MODIFIED\"}"
-            done
-            
-            NEW_JSON="$NEW_JSON]"
-            
-            # Use the cleaned JSON
-            URL_PAIRS="$NEW_JSON"
-            echo "Cleaned JSON: $URL_PAIRS"
           fi
           
           # Validate JSON
@@ -205,11 +173,11 @@ jobs:
           PAGE_TYPE="${PAGE_TYPE:-page}"
           
           # Escape special characters for JSON
-          BRAND_ESCAPED=$(echo "$BRAND" | sed 's/&/\\&/g; s/"/\\"/g')
-          PAGE_TYPE_ESCAPED=$(echo "$PAGE_TYPE" | sed 's/&/\\&/g; s/"/\\"/g')
+          BRAND_ESCAPED=$(echo "$BRAND" | sed 's/"/\\"/g; s/&/\\&/g; s/\\/\\\\/g')
+          PAGE_TYPE_ESCAPED=$(echo "$PAGE_TYPE" | sed 's/"/\\"/g; s/&/\\&/g; s/\\/\\\\/g')
           
           # Create JSON array with the manually provided URLs
-          URL_PAIR="[{ \"brand\": \"${BRAND_ESCAPED}\", \"pageType\": \"${PAGE_TYPE_ESCAPED}\", \"baseline\": \"$BASELINE\", \"modified\": \"$MODIFIED\" }]"
+          URL_PAIR="[{\"brand\":\"${BRAND_ESCAPED}\",\"pageType\":\"${PAGE_TYPE_ESCAPED}\",\"baseline\":\"$BASELINE\",\"modified\":\"$MODIFIED\"}]"
           
           echo "Manual input values:"
           echo "Brand: $BRAND"
@@ -222,9 +190,27 @@ jobs:
           if ! echo "$URL_PAIR" | jq empty; then
             echo "Error: Invalid JSON format"
             echo "Raw JSON: $URL_PAIR"
-            # Provide a fallback default value
-            URL_PAIR='[{"brand":"manual","pageType":"page","baseline":"'"$BASELINE"'","modified":"'"$MODIFIED"'"}]'
-            echo "Using fallback URL pairs: $URL_PAIR"
+            
+            # Try to fix the JSON
+            echo "$URL_PAIR" > manual_json.txt
+            
+            # 1. Fix quotes around property names
+            sed -i 's/\([{,]\)\s*\([a-zA-Z0-9_]*\)\s*:/\1"\2":/g' manual_json.txt
+            
+            # 2. Add quotes around values
+            sed -i 's/:\s*\([^",{}\[\] ][^",{}\[\]]*\)\([,}]\)/: "\1"\2/g' manual_json.txt
+            
+            FIXED_PAIR=$(cat manual_json.txt)
+            
+            # Check if the fix worked
+            if echo "$FIXED_PAIR" | jq empty; then
+              URL_PAIR="$FIXED_PAIR"
+              echo "Fixed JSON: $URL_PAIR"
+            else
+              # Provide a fallback default value
+              URL_PAIR='[{"brand":"manual","pageType":"page","baseline":"'"$BASELINE"'","modified":"'"$MODIFIED"'"}]'
+              echo "Using fallback URL pairs: $URL_PAIR"
+            fi
           fi
           
           echo "url_pairs=$URL_PAIR" >> $GITHUB_OUTPUT
@@ -276,23 +262,73 @@ jobs:
           echo "Debug URL pairs from previous job:"
           echo '${{ needs.extract-urls.outputs.url_pairs }}'
           
-          # Check if the JSON is valid
+          # Check if the JSON is valid using jq
           if echo '${{ needs.extract-urls.outputs.url_pairs }}' | jq empty; then
             echo "JSON is valid according to jq"
           else
             echo "JSON is invalid according to jq"
+            
+            # Get raw JSON
+            RAW_JSON='${{ needs.extract-urls.outputs.url_pairs }}'
+            
+            # Try to count how many pairs we need to extract (look for 'brand:' occurrences)
+            PAIR_COUNT=$(echo "$RAW_JSON" | grep -o 'brand:' | wc -l)
+            
+            if [ "$PAIR_COUNT" -gt 0 ]; then
+              echo "Detected $PAIR_COUNT URL pairs in malformed JSON"
+              
+              # Direct extraction approach
+              FIXED_JSON="["
+              
+              # Process each pair
+              for (( i=1; i<=$PAIR_COUNT; i++ )); do
+                # Extract values using grep with position markers
+                BRAND=$(echo "$RAW_JSON" | grep -o 'brand:[^,}]*' | sed -n "${i}p" | sed 's/brand://')
+                PAGETYPE=$(echo "$RAW_JSON" | grep -o 'pageType:[^,}]*' | sed -n "${i}p" | sed 's/pageType://')
+                BASELINE=$(echo "$RAW_JSON" | grep -o 'baseline:[^,}]*' | sed -n "${i}p" | sed 's/baseline://')
+                MODIFIED=$(echo "$RAW_JSON" | grep -o 'modified:[^,}]*' | sed -n "${i}p" | sed 's/modified://')
+                
+                # Trim whitespace
+                BRAND=$(echo "$BRAND" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+                PAGETYPE=$(echo "$PAGETYPE" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+                BASELINE=$(echo "$BASELINE" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+                MODIFIED=$(echo "$MODIFIED" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+                
+                # Add comma if not first entry
+                if [ $i -gt 1 ]; then
+                  FIXED_JSON="${FIXED_JSON},"
+                fi
+                
+                # Build JSON entry
+                FIXED_JSON="${FIXED_JSON}{\"brand\":\"${BRAND}\",\"pageType\":\"${PAGETYPE}\",\"baseline\":\"${BASELINE}\",\"modified\":\"${MODIFIED}\"}"
+              done
+              
+              # Close JSON array
+              FIXED_JSON="${FIXED_JSON}]"
+              
+              echo "Reconstructed JSON: $FIXED_JSON"
+              
+              # Validate the rebuilt JSON
+              if echo "$FIXED_JSON" | jq empty; then
+                echo "Successfully rebuilt valid JSON"
+                echo "$FIXED_JSON" > fixed_json.txt
+              else
+                echo "Failed to create valid JSON, using fallback"
+                FIXED_JSON='[{"brand":"default","pageType":"page","baseline":"https://example.com","modified":"https://example.com"}]'
+                echo "$FIXED_JSON" > fixed_json.txt
+              fi
+            else
+              echo "No 'brand:' patterns found in JSON"
+              FIXED_JSON='[{"brand":"default","pageType":"page","baseline":"https://example.com","modified":"https://example.com"}]'
+              echo "$FIXED_JSON" > fixed_json.txt
+            fi
           fi
           
-          # Don't use fromJson directly, create a file and validate it differently
-          echo '${{ needs.extract-urls.outputs.url_pairs }}' > url_pairs.json
-          
-          # Verify with jq
-          if jq '.' url_pairs.json > formatted.json; then
-            echo "JSON successfully formatted by jq:"
-            cat formatted.json
+          # Final display of JSON (from file if it was fixed, or directly if already valid)
+          if [ -f fixed_json.txt ]; then
+            cat fixed_json.txt | jq '.'
           else
-            echo "Failed to format JSON with jq"
-            cat url_pairs.json
+            echo '${{ needs.extract-urls.outputs.url_pairs }}' | jq '.'
           fi
 
   # Use a job to create matrix inputs
@@ -307,10 +343,59 @@ jobs:
         run: |
           PAIRS='${{ needs.extract-urls.outputs.url_pairs }}'
           
-          # Ensure JSON is valid
+          # Try to properly format JSON if it's malformed
           if ! echo "$PAIRS" | jq empty; then
-            echo "Using fallback JSON"
-            PAIRS='[{"brand":"default","pageType":"page","baseline":"https://example.com","modified":"https://example.com"}]'
+            echo "Attempting to fix malformed JSON..."
+            
+            # Try to count how many pairs we need to extract
+            PAIR_COUNT=$(echo "$PAIRS" | grep -o 'brand:' | wc -l)
+            
+            if [ "$PAIR_COUNT" -gt 0 ]; then
+              echo "Detected $PAIR_COUNT URL pairs in malformed JSON"
+              
+              # Direct extraction approach
+              FIXED_JSON="["
+              
+              # Process each pair
+              for (( i=1; i<=$PAIR_COUNT; i++ )); do
+                # Extract values using grep with position markers
+                BRAND=$(echo "$PAIRS" | grep -o 'brand:[^,}]*' | sed -n "${i}p" | sed 's/brand://')
+                PAGETYPE=$(echo "$PAIRS" | grep -o 'pageType:[^,}]*' | sed -n "${i}p" | sed 's/pageType://')
+                BASELINE=$(echo "$PAIRS" | grep -o 'baseline:[^,}]*' | sed -n "${i}p" | sed 's/baseline://')
+                MODIFIED=$(echo "$PAIRS" | grep -o 'modified:[^,}]*' | sed -n "${i}p" | sed 's/modified://')
+                
+                # Trim whitespace
+                BRAND=$(echo "$BRAND" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+                PAGETYPE=$(echo "$PAGETYPE" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+                BASELINE=$(echo "$BASELINE" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+                MODIFIED=$(echo "$MODIFIED" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+                
+                # Add comma if not first entry
+                if [ $i -gt 1 ]; then
+                  FIXED_JSON="${FIXED_JSON},"
+                fi
+                
+                # Build JSON entry
+                FIXED_JSON="${FIXED_JSON}{\"brand\":\"${BRAND}\",\"pageType\":\"${PAGETYPE}\",\"baseline\":\"${BASELINE}\",\"modified\":\"${MODIFIED}\"}"
+              done
+              
+              # Close JSON array
+              FIXED_JSON="${FIXED_JSON}]"
+              
+              echo "Reconstructed JSON: $FIXED_JSON"
+              
+              # Validate the rebuilt JSON
+              if echo "$FIXED_JSON" | jq empty; then
+                echo "Successfully rebuilt valid JSON"
+                PAIRS="$FIXED_JSON"
+              else
+                echo "Failed to create valid JSON, using fallback"
+                PAIRS='[{"brand":"default","pageType":"page","baseline":"https://example.com","modified":"https://example.com"}]'
+              fi
+            else
+              echo "No 'brand:' patterns found in JSON"
+              PAIRS='[{"brand":"default","pageType":"page","baseline":"https://example.com","modified":"https://example.com"}]'
+            fi
           fi
           
           # Create a valid JSON object for the matrix
@@ -320,7 +405,7 @@ jobs:
           echo "Matrix JSON:"
           echo "$MATRIX_JSON"
           
-          # Check if the matrix JSON is valid
+          # Final safety check
           if ! echo "$MATRIX_JSON" | jq empty; then
             echo "ERROR: Generated matrix JSON is invalid"
             # Provide a safer fallback
@@ -333,10 +418,10 @@ jobs:
   visual-test:
     needs: [prepare-matrix]
     runs-on: ubuntu-latest
-    timeout-minutes: 30  # Added timeout to ensure tests have enough time to complete
+    timeout-minutes: 30
     strategy:
       fail-fast: false
-      max-parallel: 2  # Limit parallel jobs to avoid rate limiting
+      max-parallel: 2
       matrix: ${{ fromJson(needs.prepare-matrix.outputs.matrix-json) }}
     
     steps:

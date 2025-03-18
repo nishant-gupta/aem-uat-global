@@ -639,7 +639,7 @@ jobs:
           fi
           
           # Now add the table with separate Status icon column
-          echo "| Status | Brand | Page Type | Viewport | Baseline | Modified | Match % | Differences |" >> report.md
+          echo "| Pass/Fail | Brand | Page Type | Viewport | Baseline | Modified | Match % | Differences |" >> report.md
           echo "|:------:|-------|-----------|----------|----------|----------|---------|------------|" >> report.md
           
           # Process all result files for table rows
@@ -669,17 +669,15 @@ jobs:
             
             # Set icon and status based on test results
             if [ "$STATUS" == "success" ]; then
-              if [ "$HAS_DIFFS" == "true" ]; then
-                STATUS_ICON="⚠️"
-                STATUS_TEXT="Differences"
-                OVERALL_STATUS="failure"
-              else
-                STATUS_ICON="✅"
+                STATUS_ICON="✓"
+                STATUS_HTML="<span>✅</span>"
                 STATUS_TEXT="Passed"
-              fi
+                STATUS_BADGE="![Passed](https://img.shields.io/badge/-Passed-green)"
             else
-              STATUS_ICON="❌"
+              STATUS_ICON="✗"
+              STATUS_HTML="<span>❌</span>"
               STATUS_TEXT="Failed"
+              STATUS_BADGE="![Failed](https://img.shields.io/badge/-Failed-red)"
               OVERALL_STATUS="failure"
             fi
             
@@ -687,7 +685,7 @@ jobs:
             ARTIFACT_NAME="visual-test-${BRAND}-${PAGE_TYPE}-${VIEWPORT}"
             
             # Ensure proper cell formatting with pipes at beginning and end
-            echo "| $STATUS_ICON | $BRAND | $PAGE_TYPE | $VIEWPORT | [Link]($BASELINE) | [Link]($MODIFIED) | $MATCH_PERCENT | [View Screenshots](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}) |" >> report.md
+            echo "| $STATUS_BADGE | $BRAND | $PAGE_TYPE | $VIEWPORT | [Link]($BASELINE) | [Link]($MODIFIED) | $MATCH_PERCENT | [View Screenshots](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}) |" >> report.md
           done
           
           echo "" >> report.md
@@ -713,7 +711,7 @@ jobs:
             echo "The report could not be properly formatted as a table. Here's a simplified version:" >> fallback_report.md
             echo "" >> fallback_report.md
             
-            # Add a simple list of results
+            # Add a simple list of results for fallback report
             for resultFile in $(find ./artifacts -name "result-*.json"); do
               BRAND=$(jq -r '.brand' "$resultFile")
               PAGE_TYPE=$(jq -r '.pageType' "$resultFile")
@@ -736,21 +734,21 @@ jobs:
                 fi
               fi
               
-              # Set emoji based on status
+              # Set status indicators
               if [ "$STATUS" == "success" ]; then
                 if [ "$HAS_DIFFS" == "true" ]; then
-                  STATUS_ICON="⚠️"
-                  STATUS_TEXT="Differences"
+                  STATUS_BADGE="![Failed](https://img.shields.io/badge/-Failed-red)"
+                  STATUS_TEXT="Failed"
                 else
-                  STATUS_ICON="✅"
+                  STATUS_BADGE="![Passed](https://img.shields.io/badge/-Passed-green)"
                   STATUS_TEXT="Passed"
                 fi
               else
-                STATUS_ICON="❌"
+                STATUS_BADGE="![Failed](https://img.shields.io/badge/-Failed-red)"
                 STATUS_TEXT="Failed"
               fi
               
-              echo "- $STATUS_ICON **${BRAND} - ${PAGE_TYPE} - ${VIEWPORT}**: ${STATUS_TEXT} (Match: ${MATCH_PERCENT})" >> fallback_report.md
+              echo "- $STATUS_BADGE **${BRAND} - ${PAGE_TYPE} - ${VIEWPORT}**: ${STATUS_TEXT} (Match: ${MATCH_PERCENT})" >> fallback_report.md
             done
             
             echo "" >> fallback_report.md

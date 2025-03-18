@@ -142,6 +142,43 @@ jobs:
             echo "Found URL pairs in PR description: $URL_PAIRS"
           fi
           
+          # Clean up the JSON (in case there are still format issues)
+          echo "Cleaning JSON format..."
+          BRAND_REGEX='"brand": "([^"]+)"'
+          PAGETYPE_REGEX='"pageType": "([^"]+)"'
+          BASELINE_REGEX='"baseline": "([^"]+)"'
+          MODIFIED_REGEX='"modified": "([^"]+)"'
+          
+          # Get the number of sections to process (count brand occurrences)
+          BRAND_COUNT=$(echo "$URL_PAIRS" | grep -o '"brand"' | wc -l)
+          
+          # If we found sections, rebuild the JSON carefully
+          if [ $BRAND_COUNT -gt 0 ]; then
+            NEW_JSON="["
+            
+            for (( i=1; i<=$BRAND_COUNT; i++ )); do
+              # Extract values
+              BRAND=$(echo "$URL_PAIRS" | grep -Po "$BRAND_REGEX" | sed -n "${i}p" | sed 's/"brand": "\(.*\)"/\1/')
+              PAGETYPE=$(echo "$URL_PAIRS" | grep -Po "$PAGETYPE_REGEX" | sed -n "${i}p" | sed 's/"pageType": "\(.*\)"/\1/')
+              BASELINE=$(echo "$URL_PAIRS" | grep -Po "$BASELINE_REGEX" | sed -n "${i}p" | sed 's/"baseline": "\(.*\)"/\1/')
+              MODIFIED=$(echo "$URL_PAIRS" | grep -Po "$MODIFIED_REGEX" | sed -n "${i}p" | sed 's/"modified": "\(.*\)"/\1/')
+              
+              # Add separator if not first item
+              if [ $i -gt 1 ]; then
+                NEW_JSON="$NEW_JSON,"
+              fi
+              
+              # Build properly formatted JSON
+              NEW_JSON="$NEW_JSON {\"brand\":\"$BRAND\",\"pageType\":\"$PAGETYPE\",\"baseline\":\"$BASELINE\",\"modified\":\"$MODIFIED\"}"
+            done
+            
+            NEW_JSON="$NEW_JSON]"
+            
+            # Use the cleaned JSON
+            URL_PAIRS="$NEW_JSON"
+            echo "Cleaned JSON: $URL_PAIRS"
+          fi
+          
           # Validate JSON
           echo "Validating JSON format..."
           if ! echo "$URL_PAIRS" | jq empty; then

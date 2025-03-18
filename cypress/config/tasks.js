@@ -116,9 +116,9 @@ module.exports = (on) => {
         console.log(`Compare directory does not exist: ${compareDir}`);
       }
 
-      const original = path.join(compareDir, `original-${name}.png`);
-      const modified = path.join(compareDir, `modified-${name}.png`);
-      // const diffOutput = path.join(compareDir, `diff-${name}.png`);
+      const original = path.join(screenshotPath, `original-${name}.png`);
+      const modified = path.join(screenshotPath, `modified-${name}.png`);
+      const diffOutput = path.join(screenshotPath, `diff-${name}.png`);
 
       console.log('Comparing screenshots:', original, modified);
 
@@ -127,13 +127,31 @@ module.exports = (on) => {
         return { success: false, error: 'Baseline or modified image missing' };
       }
 
-      // Use the existing implementation from cypress.config.js
-      // This is a simplification - the actual implementation would use resemblejs
-      // For now, return success to test if our paths are correct
-      return {
-        success: true,
-        mismatch: 0.05,
-      };
+      // Use resemblejs to compare the images
+      const resemble = require('resemblejs');
+      return new Promise((resolve) => {
+        resemble(original)
+          .compareTo(modified)
+          .ignoreLess() // Ignores colors (optional)
+          .onComplete((data) => {
+            const misMatchPercentage = parseFloat(data.misMatchPercentage);
+            console.log(`Mismatch: ${misMatchPercentage}%`);
+
+            if (misMatchPercentage > threshold * 100) {
+              // Save diff image
+              fs.writeFileSync(diffOutput, data.getBuffer());
+              console.log(`Diff image saved at: ${diffOutput}`);
+              console.log(`❌ Test failed: Mismatch ${misMatchPercentage}% is above threshold ${threshold * 100}%`);
+
+              resolve({ success: false, diffImage: diffOutput, mismatch: misMatchPercentage });
+            } else {
+              fs.writeFileSync(diffOutput, data.getBuffer());
+              console.log(`✅ Test passed: Mismatch ${misMatchPercentage}% is below threshold ${threshold * 100}%`);
+
+              resolve({ success: true, mismatch: misMatchPercentage });
+            }
+          });
+      });
     },
   });
 };

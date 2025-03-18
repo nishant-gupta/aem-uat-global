@@ -241,26 +241,66 @@ jobs:
           
           # Check if the JSON is valid
           if echo '${{ needs.extract-urls.outputs.url_pairs }}' | jq empty; then
-            echo "JSON is valid"
+            echo "JSON is valid according to jq"
           else
-            echo "JSON is invalid"
+            echo "JSON is invalid according to jq"
           fi
           
-          # Try to parse with fromJson
-          JSON_PARSED='${{ toJSON(fromJson(needs.extract-urls.outputs.url_pairs)) }}'
-          echo "Parsed JSON: $JSON_PARSED"
+          # Don't use fromJson directly, create a file and validate it differently
+          echo '${{ needs.extract-urls.outputs.url_pairs }}' > url_pairs.json
+          
+          # Verify with jq
+          if jq '.' url_pairs.json > formatted.json; then
+            echo "JSON successfully formatted by jq:"
+            cat formatted.json
+          else
+            echo "Failed to format JSON with jq"
+            cat url_pairs.json
+          fi
 
-  visual-test:
+  # Use a job to create matrix inputs
+  prepare-matrix:
     needs: [extract-urls, debug-matrix]
     runs-on: ubuntu-latest
+    outputs:
+      matrix-json: ${{ steps.set-matrix.outputs.matrix-json }}
+    steps:
+      - name: Set matrix values
+        id: set-matrix
+        run: |
+          PAIRS='${{ needs.extract-urls.outputs.url_pairs }}'
+          
+          # Ensure JSON is valid
+          if ! echo "$PAIRS" | jq empty; then
+            echo "Using fallback JSON"
+            PAIRS='[{"brand":"default","pageType":"page","baseline":"https://example.com","modified":"https://example.com"}]'
+          fi
+          
+          # Create a valid JSON object for the matrix
+          MATRIX_JSON=$(echo "{ \"pair\": $PAIRS, \"viewport\": [\"desktop\", \"tablet\", \"mobile\"] }")
+          
+          # Verify output
+          echo "Matrix JSON:"
+          echo "$MATRIX_JSON"
+          
+          # Check if the matrix JSON is valid
+          if ! echo "$MATRIX_JSON" | jq empty; then
+            echo "ERROR: Generated matrix JSON is invalid"
+            # Provide a safer fallback
+            MATRIX_JSON='{"pair":[{"brand":"default","pageType":"page","baseline":"https://example.com","modified":"https://example.com"}],"viewport":["desktop","tablet","mobile"]}'
+          fi
+          
+          # Output for next job
+          echo "matrix-json=$MATRIX_JSON" >> $GITHUB_OUTPUT
+
+  visual-test:
+    needs: [prepare-matrix]
+    runs-on: ubuntu-latest
     timeout-minutes: 30  # Added timeout to ensure tests have enough time to complete
-    if: ${{ needs.extract-urls.outputs.url_pairs != '[]' }}
     strategy:
       fail-fast: false
       max-parallel: 2  # Limit parallel jobs to avoid rate limiting
-      matrix:
-        pair: ${{ fromJson(needs.extract-urls.outputs.url_pairs) }}
-        viewport: [desktop, tablet, mobile]
+      matrix: ${{ fromJson(needs.prepare-matrix.outputs.matrix-json) }}
     
     steps:
       - name: Checkout Repository

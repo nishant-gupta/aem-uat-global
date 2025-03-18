@@ -627,9 +627,9 @@ jobs:
             OVERALL_STATUS="success"
           fi
           
-          # Now add the table with the new match percentage column
-          echo "| Brand | Page Type | Viewport | Baseline | Modified | Status | Match % | Differences |" >> report.md
-          echo "|-------|-----------|----------|----------|----------|--------|---------|------------|" >> report.md
+          # Now add the table with separate Status icon column
+          echo "| Status | Brand | Page Type | Viewport | Baseline | Modified | Match % | Differences |" >> report.md
+          echo "|:------:|-------|-----------|----------|----------|----------|---------|------------|" >> report.md
           
           # Process all result files for table rows
           for resultFile in $(find ./artifacts -name "result-*.json"); do
@@ -676,7 +676,7 @@ jobs:
             ARTIFACT_NAME="visual-test-${BRAND}-${PAGE_TYPE}-${VIEWPORT}"
             
             # Ensure proper cell formatting with pipes at beginning and end
-            echo "| $BRAND | $PAGE_TYPE | $VIEWPORT | [Link]($BASELINE) | [Link]($MODIFIED) | $STATUS_ICON $STATUS_TEXT | $MATCH_PERCENT | [View Screenshots](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}) |" >> report.md
+            echo "| $STATUS_ICON | $BRAND | $PAGE_TYPE | $VIEWPORT | [Link]($BASELINE) | [Link]($MODIFIED) | $MATCH_PERCENT | [View Screenshots](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}) |" >> report.md
           done
           
           echo "" >> report.md
@@ -739,7 +739,7 @@ jobs:
                 STATUS_TEXT="Failed"
               fi
               
-              echo "- **${BRAND} - ${PAGE_TYPE} - ${VIEWPORT}**: ${STATUS_ICON} ${STATUS_TEXT} (Match: ${MATCH_PERCENT})" >> fallback_report.md
+              echo "- $STATUS_ICON **${BRAND} - ${PAGE_TYPE} - ${VIEWPORT}**: ${STATUS_TEXT} (Match: ${MATCH_PERCENT})" >> fallback_report.md
             done
             
             echo "" >> fallback_report.md

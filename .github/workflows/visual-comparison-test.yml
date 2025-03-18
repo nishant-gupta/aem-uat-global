@@ -474,8 +474,11 @@ jobs:
           echo "Created cypress.env.json with content:"
           cat cypress.env.json
           
+          # Create logs directory if it doesn't exist
+          mkdir -p cypress/logs
+          
           # Run the appropriate test file based on viewport
-          npx cypress run --browser chrome --headless --spec "cypress/e2e/regression-${{ matrix.viewport }}.cy.js"
+          npx cypress run --browser chrome --headless --spec "cypress/e2e/regression-${{ matrix.viewport }}.cy.js" | tee cypress/logs/regression-${{ matrix.viewport }}.log
           
           TEST_EXIT_CODE=$?
           echo "Test exit code: $TEST_EXIT_CODE"
@@ -491,7 +494,15 @@ jobs:
           fi
           
           # Extract mismatch percentage from logs if available
-          MISMATCH_PERCENTAGE=$(grep -o "Mismatch: [0-9.]*%" cypress/logs/regression-${{ matrix.viewport }}.log 2>/dev/null | tail -1 | cut -d' ' -f2 || echo "Unknown")
+          # Look for patterns like "Mismatch: 12.34%" or "Mismatch detected: 12.34% difference"
+          MISMATCH_PERCENTAGE=$(grep -o "Mismatch.*[0-9]\+\.[0-9]\+%" cypress/logs/regression-${{ matrix.viewport }}.log 2>/dev/null | grep -o "[0-9]\+\.[0-9]\+%" | tail -1 || echo "Unknown")
+          
+          # If we didn't find a percentage, try another pattern
+          if [ "$MISMATCH_PERCENTAGE" == "Unknown" ]; then
+            MISMATCH_PERCENTAGE=$(grep -o "difference.*[0-9]\+\.[0-9]\+%" cypress/logs/regression-${{ matrix.viewport }}.log 2>/dev/null | grep -o "[0-9]\+\.[0-9]\+%" | tail -1 || echo "Unknown")
+          fi
+          
+          echo "Detected mismatch percentage: $MISMATCH_PERCENTAGE"
           
           # Create result summary
           mkdir -p test-results
@@ -616,9 +627,9 @@ jobs:
             OVERALL_STATUS="success"
           fi
           
-          # Now add the table
-          echo "| Brand | Page Type | Viewport | Baseline | Modified | Status | Differences |" >> report.md
-          echo "|-------|-----------|----------|----------|----------|--------|------------|" >> report.md
+          # Now add the table with the new match percentage column
+          echo "| Brand | Page Type | Viewport | Baseline | Modified | Status | Match % | Differences |" >> report.md
+          echo "|-------|-----------|----------|----------|----------|--------|---------|------------|" >> report.md
           
           # Process all result files for table rows
           for resultFile in $(find ./artifacts -name "result-*.json"); do
@@ -629,19 +640,34 @@ jobs:
             MODIFIED=$(jq -r '.modified' "$resultFile")
             STATUS=$(jq -r '.status' "$resultFile")
             HAS_DIFFS=$(jq -r '.has_diffs' "$resultFile")
+            MISMATCH=$(jq -r '.mismatch' "$resultFile")
             
-            # Set emoji based on status
+            # Calculate match percentage (100 - mismatch)
+            if [[ "$MISMATCH" == "Unknown" ]]; then
+              MATCH_PERCENT="N/A"
+            else
+              # Remove the % sign from mismatch if present
+              MISMATCH_VALUE=${MISMATCH//%/}
+              # Check if it's a valid number
+              if [[ "$MISMATCH_VALUE" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
+                MATCH_PERCENT=$(awk "BEGIN {printf \"%.2f%%\", 100-$MISMATCH_VALUE}")
+              else
+                MATCH_PERCENT="N/A"
+              fi
+            fi
+            
+            # Set icon and status based on test results
             if [ "$STATUS" == "success" ]; then
               if [ "$HAS_DIFFS" == "true" ]; then
-                STATUS_EMOJI="⚠️"
+                STATUS_ICON="⚠️"
                 STATUS_TEXT="Differences"
                 OVERALL_STATUS="failure"
               else
-                STATUS_EMOJI="✅"
+                STATUS_ICON="✅"
                 STATUS_TEXT="Passed"
               fi
             else
-              STATUS_EMOJI="❌"
+              STATUS_ICON="❌"
               STATUS_TEXT="Failed"
               OVERALL_STATUS="failure"
             fi
@@ -650,7 +676,7 @@ jobs:
             ARTIFACT_NAME="visual-test-${BRAND}-${PAGE_TYPE}-${VIEWPORT}"
             
             # Ensure proper cell formatting with pipes at beginning and end
-            echo "| $BRAND | $PAGE_TYPE | $VIEWPORT | [Link]($BASELINE) | [Link]($MODIFIED) | $STATUS_EMOJI $STATUS_TEXT | [View Screenshots](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}) |" >> report.md
+            echo "| $BRAND | $PAGE_TYPE | $VIEWPORT | [Link]($BASELINE) | [Link]($MODIFIED) | $STATUS_ICON $STATUS_TEXT | $MATCH_PERCENT | [View Screenshots](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}) |" >> report.md
           done
           
           echo "" >> report.md
@@ -683,22 +709,37 @@ jobs:
               VIEWPORT=$(jq -r '.viewport' "$resultFile")
               STATUS=$(jq -r '.status' "$resultFile")
               HAS_DIFFS=$(jq -r '.has_diffs' "$resultFile")
+              MISMATCH=$(jq -r '.mismatch' "$resultFile")
+              
+              # Calculate match percentage
+              if [[ "$MISMATCH" == "Unknown" ]]; then
+                MATCH_PERCENT="N/A"
+              else
+                # Remove the % sign from mismatch if present
+                MISMATCH_VALUE=${MISMATCH//%/}
+                # Check if it's a valid number
+                if [[ "$MISMATCH_VALUE" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
+                  MATCH_PERCENT=$(awk "BEGIN {printf \"%.2f%%\", 100-$MISMATCH_VALUE}")
+                else
+                  MATCH_PERCENT="N/A"
+                fi
+              fi
               
               # Set emoji based on status
               if [ "$STATUS" == "success" ]; then
                 if [ "$HAS_DIFFS" == "true" ]; then
-                  STATUS_EMOJI="⚠️"
+                  STATUS_ICON="⚠️"
                   STATUS_TEXT="Differences"
                 else
-                  STATUS_EMOJI="✅"
+                  STATUS_ICON="✅"
                   STATUS_TEXT="Passed"
                 fi
               else
-                STATUS_EMOJI="❌"
+                STATUS_ICON="❌"
                 STATUS_TEXT="Failed"
               fi
               
-              echo "- **${BRAND} - ${PAGE_TYPE} - ${VIEWPORT}**: ${STATUS_EMOJI} ${STATUS_TEXT}" >> fallback_report.md
+              echo "- **${BRAND} - ${PAGE_TYPE} - ${VIEWPORT}**: ${STATUS_ICON} ${STATUS_TEXT} (Match: ${MATCH_PERCENT})" >> fallback_report.md
             done
             
             echo "" >> fallback_report.md

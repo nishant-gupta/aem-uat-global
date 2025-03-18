@@ -1,0 +1,426 @@
+name: Visual Comparison Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      brand:
+        description: 'Brand code (optional)'
+        required: false
+      pageType:
+        description: 'Page type (optional)'
+        required: false
+      baseline:
+        description: 'Baseline URL to compare'
+        required: true
+      modified:
+        description: 'Modified URL to compare'
+        required: true
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  extract-urls:
+    runs-on: ubuntu-latest
+    outputs:
+      url_pairs: ${{ steps.combine.outputs.url_pairs }}
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Extract URLs from PR Description
+        id: extract
+        if: github.event_name == 'pull_request'
+        run: |
+          echo "Processing PR description for visual test configurations..."
+          
+          # Get PR description and remove carriage returns
+          DESCRIPTION=$(echo "${{ github.event.pull_request.body }}" | tr -d '\r')
+          
+          # Create a temporary file with the description for easier processing
+          echo "$DESCRIPTION" > pr_description.txt
+          
+          # Extract URL pairs using a more robust approach
+          cat > extract_urls.awk << 'EOL'
+          BEGIN { 
+            FS=": "; 
+            OFS=""; 
+            json="["; 
+            first=1;
+            brand="";
+            pageType="";
+            baseline="";
+            modified="";
+            in_visual_section=0;
+          }
+          
+          /^## Visual Test/ { 
+            in_visual_section=1;
+            # Reset values for new section
+            brand="";
+            pageType="";
+            baseline="";
+            modified="";
+          }
+          
+          /^##/ && !/^## Visual Test/ { 
+            in_visual_section=0; 
+          }
+          
+          in_visual_section && /^- Brand:/ { 
+            brand=$2; 
+            gsub(/^[ \t]+|[ \t]+$/, "", brand);
+          }
+          
+          in_visual_section && /^- PageType:/ { 
+            pageType=$2; 
+            gsub(/^[ \t]+|[ \t]+$/, "", pageType);
+          }
+          
+          in_visual_section && /^- Baseline:/ { 
+            baseline=$2; 
+            gsub(/^[ \t]+|[ \t]+$/, "", baseline);
+          }
+          
+          in_visual_section && /^- Modified:/ { 
+            modified=$2; 
+            gsub(/^[ \t]+|[ \t]+$/, "", modified);
+            
+            # If we have all required fields, add to JSON
+            if (brand != "" && baseline != "" && modified != "") {
+              if (pageType == "") pageType = "page";
+              
+              if (!first) json=json",";
+              json=json" { \"brand\": \""brand"\", \"pageType\": \""pageType"\", \"baseline\": \""baseline"\", \"modified\": \""modified"\" }";
+              first=0;
+              
+              # Reset for next set within the same section
+              brand="";
+              pageType="";
+              baseline="";
+              modified="";
+            }
+          }
+          
+          END { 
+            json=json" ]"; 
+            print json;
+          }
+          EOL
+          
+          URL_PAIRS=$(awk -f extract_urls.awk pr_description.txt)
+          
+          # Ensure valid JSON output
+          if [[ -z "$URL_PAIRS" || "$URL_PAIRS" == "[ ]" ]]; then
+            echo "No URL pairs found in PR description. Please format your PR description with sections like:"
+            echo "## Visual Test"
+            echo "- Brand: BrandName"
+            echo "- PageType: HomePage"
+            echo "- Baseline: https://baseline-url.com"
+            echo "- Modified: https://modified-url.com"
+            URL_PAIRS="[]"
+          else
+            echo "Found URL pairs in PR description: $URL_PAIRS"
+          fi
+          
+          echo "url_pairs=$URL_PAIRS" >> $GITHUB_OUTPUT
+
+      - name: Set Manual URL Pair
+        id: manual
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          BRAND="${{ github.event.inputs.brand }}"
+          PAGE_TYPE="${{ github.event.inputs.pageType }}"
+          BASELINE="${{ github.event.inputs.baseline }}"
+          MODIFIED="${{ github.event.inputs.modified }}"
+          
+          # Create JSON array with the manually provided URLs
+          URL_PAIR="[{ \"brand\": \"${BRAND:-manual}\", \"pageType\": \"${PAGE_TYPE:-page}\", \"baseline\": \"$BASELINE\", \"modified\": \"$MODIFIED\" }]"
+          
+          echo "url_pairs=$URL_PAIR" >> $GITHUB_OUTPUT
+          echo "Manual URL pair: $URL_PAIR"
+
+      - name: Combine URL Pairs
+        id: combine
+        run: |
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
+            echo "url_pairs=${{ steps.extract.outputs.url_pairs }}" >> $GITHUB_OUTPUT
+          else
+            echo "url_pairs=${{ steps.manual.outputs.url_pairs }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Validate URL Pairs
+        if: github.event_name == 'pull_request'
+        run: |
+          URL_PAIRS='${{ steps.combine.outputs.url_pairs }}'
+          
+          if [ "$URL_PAIRS" == "[]" ]; then
+            echo "::warning::No valid URL pairs found in PR description. Please format your PR description with sections like:"
+            echo "::warning::## Visual Test"
+            echo "::warning::- Brand: BrandName"
+            echo "::warning::- PageType: HomePage"
+            echo "::warning::- Baseline: https://baseline-url.com"
+            echo "::warning::- Modified: https://modified-url.com"
+          else
+            echo "Valid URL pairs found. Visual tests will run."
+          fi
+
+  visual-test:
+    needs: extract-urls
+    runs-on: ubuntu-latest
+    if: ${{ needs.extract-urls.outputs.url_pairs != '[]' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        pair: ${{ fromJson(needs.extract-urls.outputs.url_pairs) }}
+        viewport: [mobile, tablet, desktop]
+    
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: |
+          npm ci || npm install
+          npm install -g cypress
+          npm install cypress-visual-regression cypress-multi-reporters mochawesome mochawesome-merge mochawesome-report-generator
+
+      - name: Create Cypress Config
+        run: |
+          cat > cypress.config.js << 'EOL'
+          const { defineConfig } = require('cypress');
+          const { configureVisualRegression } = require('cypress-visual-regression');
+
+          module.exports = defineConfig({
+            e2e: {
+              setupNodeEvents(on, config) {
+                configureVisualRegression(on, config);
+                return config;
+              },
+              baseUrl: 'https://example.com',
+              specPattern: 'cypress/e2e/**/*.cy.{js,jsx,ts,tsx}',
+              viewportWidth: 1280,
+              viewportHeight: 720,
+              video: false,
+            },
+          });
+          EOL
+
+      - name: Create Cypress Test
+        run: |
+          mkdir -p cypress/e2e
+          mkdir -p cypress/screenshots
+          mkdir -p cypress/fixtures
+          
+          # Set viewport dimensions based on matrix
+          if [ "${{ matrix.viewport }}" == "mobile" ]; then
+            WIDTH=375
+            HEIGHT=667
+          elif [ "${{ matrix.viewport }}" == "tablet" ]; then
+            WIDTH=768
+            HEIGHT=1024
+          else
+            WIDTH=1280
+            HEIGHT=800
+          fi
+          
+          # Create test file
+          cat > cypress/e2e/visual-comparison-${{ matrix.pair.brand }}-${{ matrix.pair.pageType }}-${{ matrix.viewport }}.cy.js << EOL
+          describe('Visual Comparison - ${{ matrix.pair.brand }} - ${{ matrix.pair.pageType }} - ${{ matrix.viewport }}', () => {
+            const viewportWidth = ${WIDTH};
+            const viewportHeight = ${HEIGHT};
+            
+            beforeEach(() => {
+              cy.viewport(viewportWidth, viewportHeight);
+            });
+            
+            it('Baseline: captures screenshot of baseline URL', () => {
+              cy.visit('${{ matrix.pair.baseline }}');
+              // Wait for page to be fully loaded
+              cy.wait(2000);
+              cy.document().then((doc) => {
+                // Scroll through page to ensure all lazy-loaded elements are loaded
+                cy.scrollTo('bottom', { duration: 1000 });
+                cy.scrollTo('top', { duration: 500 });
+                cy.wait(1000);
+              });
+              cy.compareSnapshot('baseline-${{ matrix.viewport }}', {
+                capture: 'fullPage',
+                errorThreshold: 0.1
+              });
+            });
+            
+            it('Modified: captures screenshot of modified URL', () => {
+              cy.visit('${{ matrix.pair.modified }}');
+              // Wait for page to be fully loaded
+              cy.wait(2000);
+              cy.document().then((doc) => {
+                // Scroll through page to ensure all lazy-loaded elements are loaded
+                cy.scrollTo('bottom', { duration: 1000 });
+                cy.scrollTo('top', { duration: 500 });
+                cy.wait(1000);
+              });
+              cy.compareSnapshot('modified-${{ matrix.viewport }}', {
+                capture: 'fullPage',
+                errorThreshold: 0.1
+              });
+            });
+          });
+          EOL
+
+      - name: Run Cypress Tests
+        id: cypress
+        continue-on-error: true
+        run: |
+          npx cypress run --spec "cypress/e2e/visual-comparison-${{ matrix.pair.brand }}-${{ matrix.pair.pageType }}-${{ matrix.viewport }}.cy.js"
+          
+          # Check if diff images were created (indicating visual differences)
+          DIFF_COUNT=$(find cypress/screenshots -name "*diff.png" | wc -l)
+          if [ $DIFF_COUNT -gt 0 ]; then
+            echo "Visual differences detected in $DIFF_COUNT screenshots"
+            echo "has_diffs=true" >> $GITHUB_OUTPUT
+          else
+            echo "No visual differences detected"
+            echo "has_diffs=false" >> $GITHUB_OUTPUT
+          fi
+          
+          # Create result summary
+          mkdir -p test-results
+          echo "{
+            \"brand\": \"${{ matrix.pair.brand }}\",
+            \"pageType\": \"${{ matrix.pair.pageType }}\",
+            \"viewport\": \"${{ matrix.viewport }}\",
+            \"baseline\": \"${{ matrix.pair.baseline }}\",
+            \"modified\": \"${{ matrix.pair.modified }}\",
+            \"status\": \"$([ $? -eq 0 ] && echo 'success' || echo 'failure')\",
+            \"has_diffs\": \"$([ $DIFF_COUNT -gt 0 ] && echo 'true' || echo 'false')\"
+          }" > test-results/result-${{ matrix.pair.brand }}-${{ matrix.pair.pageType }}-${{ matrix.viewport }}.json
+
+      - name: Upload Screenshots
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-test-${{ matrix.pair.brand }}-${{ matrix.pair.pageType }}-${{ matrix.viewport }}
+          path: |
+            cypress/screenshots/**/*.png
+            test-results/*.json
+          retention-days: 14
+
+  report-results:
+    needs: visual-test
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Download Test Results
+        uses: actions/download-artifact@v4
+        with:
+          path: ./artifacts
+
+      - name: Generate Report
+        id: report
+        run: |
+          echo "### 🖼️ Visual Comparison Test Results" > report.md
+          echo "" >> report.md
+          
+          # Check if we have any results
+          if [ -z "$(find ./artifacts -name "result-*.json" 2>/dev/null)" ]; then
+            echo "No test results found. Please ensure your PR description includes visual test configurations in the correct format:" >> report.md
+            echo "" >> report.md
+            echo "```" >> report.md
+            echo "## Visual Test" >> report.md
+            echo "- Brand: BrandName" >> report.md
+            echo "- PageType: HomePage" >> report.md
+            echo "- Baseline: https://baseline-url.com" >> report.md
+            echo "- Modified: https://modified-url.com" >> report.md
+            echo "```" >> report.md
+            
+            echo "overall_status=skipped" >> $GITHUB_OUTPUT
+            cat report.md
+            exit 0
+          fi
+          
+          echo "| Brand | Page Type | Viewport | Baseline | Modified | Status | Differences |" >> report.md
+          echo "|-------|-----------|----------|----------|----------|--------|------------|" >> report.md
+          
+          # Process all result files
+          OVERALL_STATUS="success"
+          
+          for resultFile in $(find ./artifacts -name "result-*.json"); do
+            BRAND=$(jq -r '.brand' "$resultFile")
+            PAGE_TYPE=$(jq -r '.pageType' "$resultFile")
+            VIEWPORT=$(jq -r '.viewport' "$resultFile")
+            BASELINE=$(jq -r '.baseline' "$resultFile")
+            MODIFIED=$(jq -r '.modified' "$resultFile")
+            STATUS=$(jq -r '.status' "$resultFile")
+            HAS_DIFFS=$(jq -r '.has_diffs' "$resultFile")
+            
+            # Set emoji based on status
+            if [ "$STATUS" == "success" ]; then
+              if [ "$HAS_DIFFS" == "true" ]; then
+                STATUS_EMOJI="⚠️"
+                STATUS_TEXT="Differences"
+                OVERALL_STATUS="failure"
+              else
+                STATUS_EMOJI="✅"
+                STATUS_TEXT="Passed"
+              fi
+            else
+              STATUS_EMOJI="❌"
+              STATUS_TEXT="Failed"
+              OVERALL_STATUS="failure"
+            fi
+            
+            # Get artifact name for linking
+            ARTIFACT_NAME="visual-test-${BRAND}-${PAGE_TYPE}-${VIEWPORT}"
+            
+            echo "| $BRAND | $PAGE_TYPE | $VIEWPORT | [Link]($BASELINE) | [Link]($MODIFIED) | $STATUS_EMOJI $STATUS_TEXT | [View Screenshots](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})" >> report.md
+          done
+          
+          echo "" >> report.md
+          echo "---" >> report.md
+          echo "📎 **[Download All Screenshots](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})**" >> report.md
+          
+          if [ "$OVERALL_STATUS" == "success" ]; then
+            echo "overall_status=success" >> $GITHUB_OUTPUT
+          else
+            echo "overall_status=failure" >> $GITHUB_OUTPUT
+          fi
+          
+          cat report.md
+
+      - name: Comment on PR
+        if: github.event_name == 'pull_request'
+        uses: mshick/add-pr-comment@v2
+        with:
+          message-path: report.md
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set PR Status
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const overallStatus = '${{ steps.report.outputs.overall_status }}';
+            
+            await github.rest.checks.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              name: 'Visual Comparison Tests',
+              head_sha: context.payload.pull_request.head.sha,
+              status: 'completed',
+              conclusion: overallStatus === 'skipped' ? 'neutral' : overallStatus,
+              output: {
+                title: overallStatus === 'success' ? 'Visual tests passed' : 
+                       overallStatus === 'skipped' ? 'No visual tests run' : 'Visual differences detected',
+                summary: 'See PR comment for details and screenshots'
+              }
+            }); 

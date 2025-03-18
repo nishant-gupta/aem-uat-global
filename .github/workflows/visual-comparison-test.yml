@@ -18,9 +18,12 @@ on:
   pull_request:
     types: [opened, synchronize, reopened]
 
+# Explicitly define permissions needed for PR comments
 permissions:
   contents: read
   pull-requests: write
+  issues: write
+  checks: write
 
 jobs:
   extract-urls:
@@ -659,14 +662,90 @@ jobs:
             echo "overall_status=failure" >> $GITHUB_OUTPUT
           fi
           
+          echo "Report content generated:"
           cat report.md
+          echo "-----------------------------"
+          echo "Report file size: $(wc -c < report.md) bytes"
+          echo "Report is ready for commenting"
+
+      - name: Debug GitHub Token
+        if: github.event_name == 'pull_request'
+        run: |
+          echo "Checking permissions for GitHub token..."
+          echo "GITHUB_TOKEN permissions: ${{ toJson(github.token) }}"
+          echo "PR number: ${{ github.event.pull_request.number }}"
+          echo "Repo: ${{ github.repository }}"
+          echo "Event name: ${{ github.event_name }}"
 
       - name: Comment on PR
+        id: comment-with-github-script
         if: github.event_name == 'pull_request'
-        uses: mshick/add-pr-comment@v2
+        uses: actions/github-script@v6
+        continue-on-error: true
         with:
-          message-path: report.md
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            let reportContent = fs.readFileSync('report.md', 'utf8');
+            
+            // GitHub has a comment size limit (around 65536 characters)
+            // Truncate if necessary to avoid errors
+            const MAX_COMMENT_LENGTH = 60000;
+            if (reportContent.length > MAX_COMMENT_LENGTH) {
+              console.log(`Comment is too long (${reportContent.length} characters). Truncating...`);
+              reportContent = reportContent.substring(0, MAX_COMMENT_LENGTH) + 
+                '\n\n**⚠️ Comment truncated due to GitHub size limits. See full results in the action logs.**';
+            }
+            
+            console.log(`Attempting to post comment to PR #${context.issue.number}`);
+            console.log(`Comment length: ${reportContent.length} characters`);
+            
+            try {
+              const result = await github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: reportContent
+              });
+              console.log(`Comment posted successfully with ID: ${result.data.id}`);
+              return true;
+            } catch (error) {
+              console.error('Error posting comment:');
+              console.error(error);
+              console.error(`Error message: ${error.message}`);
+              return false;
+            }
+
+      # Fallback comment mechanism if the github-script approach fails
+      - name: Comment on PR (Fallback)
+        id: comment-fallback
+        if: github.event_name == 'pull_request' && steps.comment-with-github-script.outcome == 'failure'
+        uses: peter-evans/create-or-update-comment@v3
+        continue-on-error: true
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          body-file: report.md
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      # Final fallback using direct REST API call
+      - name: Comment on PR (REST API Fallback)
+        if: github.event_name == 'pull_request' && steps.comment-with-github-script.outcome == 'failure' && steps.comment-fallback.outcome == 'failure'
+        run: |
+          # Prepare a simplified report as fallback
+          echo "### 🖼️ Visual Comparison Test Results (Simplified)" > simple_report.md
+          echo "" >> simple_report.md
+          echo "A detailed report couldn't be posted automatically. Please check the action logs for full results." >> simple_report.md
+          echo "" >> simple_report.md
+          echo "Overall status: ${{ steps.report.outputs.overall_status }}" >> simple_report.md
+          echo "" >> simple_report.md
+          echo "📎 **[View Full Results](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})**" >> simple_report.md
+          
+          # Use curl to post the comment with the REST API
+          curl -X POST \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            "https://api.github.com/repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments" \
+            -d "{\"body\": $(cat simple_report.md | jq -Rs .)}"
 
       - name: Set PR Status
         if: github.event_name == 'pull_request'

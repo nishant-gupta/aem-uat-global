@@ -79,9 +79,9 @@ describe('Compare Screenshots Between Two URLs', () => {
       cy.get('body').should('be.visible');
 
       // Pre-scroll the page to trigger lazy loading of images
-      cy.scrollTo('bottom', { duration: 1000 });
+      cy.scrollTo('bottom', { duration: 1000, ensureScrollable: false });
       cy.wait(2000); // Wait for images to load after scrolling
-      cy.scrollTo('top', { duration: 500 });
+      cy.scrollTo('top', { duration: 500, ensureScrollable: false });
       cy.wait(2000); // Final wait before taking screenshot
 
       // Hide any sticky headers to prevent them from appearing multiple times
@@ -94,6 +94,23 @@ describe('Compare Screenshots Between Two URLs', () => {
             headerTag.style.height = 0;
           }
         }
+        
+        // Hide scrollbars for all viewports to ensure consistency
+        const style = win.document.createElement('style');
+        style.id = 'hide-scrollbars';
+        style.textContent = `
+          html, body {
+            overflow: hidden !important;
+            overflow-x: hidden !important;
+            overflow-y: hidden !important;
+          }
+          ::-webkit-scrollbar {
+            display: none !important;
+            width: 0 !important;
+            height: 0 !important;
+          }
+        `;
+        win.document.head.appendChild(style);
       });
 
       // Take a screenshot with the fullPage option
@@ -107,6 +124,12 @@ describe('Compare Screenshots Between Two URLs', () => {
             // remove the style
             headerTag.removeAttribute('style');
           }
+        }
+        
+        // Remove the scrollbar hiding styles
+        const style = win.document.getElementById('hide-scrollbars');
+        if (style) {
+          style.remove();
         }
       });
 
@@ -143,6 +166,23 @@ describe('Compare Screenshots Between Two URLs', () => {
                 headerTag.style.height = 0;
               }
             }
+            
+            // Hide scrollbars for all viewports to ensure consistency
+            const style = win.document.createElement('style');
+            style.id = 'hide-scrollbars';
+            style.textContent = `
+              html, body {
+                overflow: hidden !important;
+                overflow-x: hidden !important;
+                overflow-y: hidden !important;
+              }
+              ::-webkit-scrollbar {
+                display: none !important;
+                width: 0 !important;
+                height: 0 !important;
+              }
+            `;
+            win.document.head.appendChild(style);
           });
 
           // Take a screenshot with the fullPage option
@@ -156,6 +196,12 @@ describe('Compare Screenshots Between Two URLs', () => {
                 // remove the style
                 headerTag.removeAttribute('style');
               }
+            }
+            
+            // Remove the scrollbar hiding styles
+            const style = win.document.getElementById('hide-scrollbars');
+            if (style) {
+              style.remove();
             }
           });
         },

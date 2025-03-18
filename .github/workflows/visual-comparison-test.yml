@@ -1,5 +1,12 @@
 name: Visual Comparison Test
 
+# This workflow runs visual comparison tests between two URLs
+# It can be triggered manually with URLs or via PR with URLs in the description
+# Improvements:
+# - Added scrollbar hiding to ensure consistent screenshots
+# - Visual comparison with match percentage reporting
+# - Detailed PR comment with pass/fail status badges
+
 on:
   workflow_dispatch:
     inputs:

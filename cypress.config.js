@@ -2,6 +2,8 @@ const fs = require('fs-extra');
 const resemble = require('resemblejs');
 const path = require('path');
 const dotenv = require('dotenv');
+const customTasks = require('./cypress/config/tasks.js');
+
 dotenv.config();
 
 module.exports = {
@@ -21,25 +23,13 @@ module.exports = {
       overwrite: true,
     },
     setupNodeEvents(on, config) {
-      // Register tasks
+      // Register tasks from our custom tasks module
+      customTasks(on);
+      
+      // Keep the original compareScreenshots implementation
       on('task', {
-        clearScreenshots() {
-          const screenshotsPath = path.join(__dirname, 'cypress', 'screenshots');
-          console.log(`Deleting old screenshots from: ${screenshotsPath}`);
-
-          // Check if the folder exists and delete contents
-          if (fs.existsSync(screenshotsPath)) {
-            fs.emptyDirSync(screenshotsPath);
-          }
-          return null;
-        },
-        getScreenshotPath(specName) {
-          const screenshotFolder = config.screenshotsFolder || 'cypress/screenshots';
-          const isHeadless = config.isTextTerminal;
-          return isHeadless ? path.join(screenshotFolder, specName) : screenshotFolder;
-        },
-        async compareScreenshots({ name, screenshotPath, threshold = 0.1 }) {
-          const screenshotsDir = path.join(screenshotPath, 'compare');
+        compareScreenshots({ name, screenshotPath, threshold = 0.1 }) {
+          const screenshotsDir = screenshotPath || path.join(__dirname, 'cypress', 'screenshots', 'regression.cy.js', 'compare');
           const baseline = path.join(screenshotsDir, `original-${name}.png`);
           const modified = path.join(screenshotsDir, `modified-${name}.png`);
           const diffOutput = path.join(screenshotsDir, `diff-${name}.png`);

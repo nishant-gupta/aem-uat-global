@@ -6,7 +6,11 @@
   "scripts": {
     "lint:js": "eslint .",
     "lint:css": "stylelint blocks/**/*.css styles/*.css",
-    "lint": "npm run lint:js && npm run lint:css"
+    "lint": "npm run lint:js && npm run lint:css",
+    "mcp:server": "node scripts/mcp/server.js",
+    "mcp:client": "node scripts/mcp/client.js",
+    "mcp:open": "open scripts/mcp/index.html",
+    "test:parallel": "scripts/run-parallel-tests.sh"
   },
   "repository": {
     "type": "git",

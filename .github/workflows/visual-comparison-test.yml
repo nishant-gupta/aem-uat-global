@@ -1,0 +1,962 @@
+name: Visual Comparison Test
+
+# This workflow runs visual comparison tests between two URLs
+# It can be triggered manually with URLs or via PR with URLs in the description
+# Improvements:
+# - Added scrollbar hiding to ensure consistent screenshots
+# - Visual comparison with match percentage reporting
+# - Detailed PR comment with pass/fail status badges
+
+on:
+  workflow_dispatch:
+    inputs:
+      brand:
+        description: 'Brand code (optional)'
+        required: false
+      pageType:
+        description: 'Page type (optional)'
+        required: false
+      baseline:
+        description: 'Baseline URL to compare'
+        required: true
+      modified:
+        description: 'Modified URL to compare'
+        required: true
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+# Configure concurrency to manage parallel executions
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
+
+# Explicitly define permissions needed for PR comments
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+  checks: write
+
+jobs:
+  extract-urls:
+    runs-on: ubuntu-latest
+    outputs:
+      url_pairs: ${{ steps.combine.outputs.url_pairs }}
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Extract URLs from PR Description
+        id: extract
+        if: github.event_name == 'pull_request'
+        run: |
+          echo "Processing PR description for visual test configurations..."
+          
+          # Get PR description and remove carriage returns
+          DESCRIPTION=$(echo "${{ github.event.pull_request.body }}" | tr -d '\r')
+          
+          # Create a temporary file with the description for easier processing
+          echo "$DESCRIPTION" > pr_description.txt
+          
+          # Debug info
+          echo "===== PR DESCRIPTION ====="
+          cat pr_description.txt
+          echo "=========================="
+          
+          # Process PR description section by section to extract test configurations
+          # This uses direct shell commands instead of awk
+          
+          # First, process the file line by line to identify visual test sections
+          JSON_ARRAY="["
+          FIRST_ENTRY=true
+          
+          # Set initial state
+          IN_VISUAL_SECTION=false
+          BRAND=""
+          PAGETYPE="page" # Default value
+          BASELINE=""
+          MODIFIED=""
+          
+          # Process description line by line
+          while IFS= read -r line; do
+            # Detect section headers
+            if [[ "$line" =~ ^##\ Visual\ Test ]]; then
+              # Start a new visual test section
+              IN_VISUAL_SECTION=true
+              BRAND=""
+              PAGETYPE="page"
+              BASELINE=""
+              MODIFIED=""
+              echo "Found Visual Test section"
+            elif [[ "$line" =~ ^## ]]; then
+              # End current section if we were in one
+              IN_VISUAL_SECTION=false
+            fi
+            
+            # Process lines within a visual test section
+            if [ "$IN_VISUAL_SECTION" = true ]; then
+              # Extract brand
+              if [[ "$line" =~ ^-\ Brand: ]]; then
+                BRAND=$(echo "$line" | sed 's/^- Brand: \(.*\)$/\1/' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+                echo "Found Brand: $BRAND"
+              fi
+              
+              # Extract page type
+              if [[ "$line" =~ ^-\ PageType: ]]; then
+                PAGETYPE=$(echo "$line" | sed 's/^- PageType: \(.*\)$/\1/' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+                echo "Found PageType: $PAGETYPE"
+              fi
+              
+              # Extract baseline URL
+              if [[ "$line" =~ ^-\ Baseline: ]]; then
+                BASELINE=$(echo "$line" | sed 's/^- Baseline: \(.*\)$/\1/' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+                echo "Found Baseline: $BASELINE"
+              fi
+              
+              # Extract modified URL and create entry if all required fields are present
+              if [[ "$line" =~ ^-\ Modified: ]]; then
+                MODIFIED=$(echo "$line" | sed 's/^- Modified: \(.*\)$/\1/' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+                echo "Found Modified: $MODIFIED"
+                
+                # If we have all required fields, add to JSON
+                if [[ -n "$BRAND" && -n "$BASELINE" && -n "$MODIFIED" ]]; then
+                  # Escape special characters for JSON
+                  BRAND_ESCAPED=$(echo "$BRAND" | sed 's/"/\\"/g; s/&/\\&/g')
+                  PAGETYPE_ESCAPED=$(echo "$PAGETYPE" | sed 's/"/\\"/g; s/&/\\&/g')
+                  
+                  # Add comma if not the first entry
+                  if [ "$FIRST_ENTRY" = false ]; then
+                    JSON_ARRAY="$JSON_ARRAY,"
+                  else
+                    FIRST_ENTRY=false
+                  fi
+                  
+                  # Add entry to JSON array
+                  JSON_ARRAY="$JSON_ARRAY{\"brand\":\"$BRAND_ESCAPED\",\"pageType\":\"$PAGETYPE_ESCAPED\",\"baseline\":\"$BASELINE\",\"modified\":\"$MODIFIED\"}"
+                  echo "Added pair to JSON"
+                  
+                  # Reset for next potential entry in the same section
+                  BRAND=""
+                  PAGETYPE="page"
+                  BASELINE=""
+                  MODIFIED=""
+                fi
+              fi
+            fi
+          done < pr_description.txt
+          
+          # Complete the JSON array
+          JSON_ARRAY="$JSON_ARRAY]"
+          URL_PAIRS="$JSON_ARRAY"
+          
+          # Ensure valid JSON output
+          if [[ "$URL_PAIRS" == "[]" ]]; then
+            echo "No URL pairs found in PR description. Please format your PR description with sections like:"
+            echo "## Visual Test"
+            echo "- Brand: BrandName"
+            echo "- PageType: HomePage"
+            echo "- Baseline: https://baseline-url.com"
+            echo "- Modified: https://modified-url.com"
+            URL_PAIRS="[]"
+          else
+            echo "Found URL pairs in PR description: $URL_PAIRS"
+          fi
+          
+          # Validate JSON
+          echo "Validating JSON format..."
+          if ! echo "$URL_PAIRS" | jq empty; then
+            echo "Error: Invalid JSON format"
+            echo "Raw JSON: $URL_PAIRS"
+            # Provide a fallback default value
+            URL_PAIRS='[{"brand":"default","pageType":"page","baseline":"https://example.com","modified":"https://example.com"}]'
+            echo "Using fallback URL pairs: $URL_PAIRS"
+          fi
+          
+          echo "url_pairs=$URL_PAIRS" >> $GITHUB_OUTPUT
+
+      - name: Set Manual URL Pair
+        id: manual
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          BRAND="${{ github.event.inputs.brand }}"
+          PAGE_TYPE="${{ github.event.inputs.pageType }}"
+          BASELINE="${{ github.event.inputs.baseline }}"
+          MODIFIED="${{ github.event.inputs.modified }}"
+          
+          # Default values if not provided
+          BRAND="${BRAND:-manual}"
+          PAGE_TYPE="${PAGE_TYPE:-page}"
+          
+          # Escape special characters for JSON
+          BRAND_ESCAPED=$(echo "$BRAND" | sed 's/"/\\"/g; s/&/\\&/g; s/\\/\\\\/g')
+          PAGE_TYPE_ESCAPED=$(echo "$PAGE_TYPE" | sed 's/"/\\"/g; s/&/\\&/g; s/\\/\\\\/g')
+          
+          # Create JSON array with the manually provided URLs
+          URL_PAIR="[{\"brand\":\"${BRAND_ESCAPED}\",\"pageType\":\"${PAGE_TYPE_ESCAPED}\",\"baseline\":\"$BASELINE\",\"modified\":\"$MODIFIED\"}]"
+          
+          echo "Manual input values:"
+          echo "Brand: $BRAND"
+          echo "Page Type: $PAGE_TYPE"
+          echo "Baseline: $BASELINE"
+          echo "Modified: $MODIFIED"
+          
+          # Validate JSON
+          echo "Validating JSON format..."
+          if ! echo "$URL_PAIR" | jq empty; then
+            echo "Error: Invalid JSON format"
+            echo "Raw JSON: $URL_PAIR"
+            
+            # Try to fix the JSON
+            echo "$URL_PAIR" > manual_json.txt
+            
+            # 1. Fix quotes around property names
+            sed -i 's/\([{,]\)\s*\([a-zA-Z0-9_]*\)\s*:/\1"\2":/g' manual_json.txt
+            
+            # 2. Add quotes around values
+            sed -i 's/:\s*\([^",{}\[\] ][^",{}\[\]]*\)\([,}]\)/: "\1"\2/g' manual_json.txt
+            
+            FIXED_PAIR=$(cat manual_json.txt)
+            
+            # Check if the fix worked
+            if echo "$FIXED_PAIR" | jq empty; then
+              URL_PAIR="$FIXED_PAIR"
+              echo "Fixed JSON: $URL_PAIR"
+            else
+              # Provide a fallback default value
+              URL_PAIR='[{"brand":"manual","pageType":"page","baseline":"'"$BASELINE"'","modified":"'"$MODIFIED"'"}]'
+              echo "Using fallback URL pairs: $URL_PAIR"
+            fi
+          fi
+          
+          echo "url_pairs=$URL_PAIR" >> $GITHUB_OUTPUT
+          echo "Manual URL pair: $URL_PAIR"
+
+      - name: Combine URL Pairs
+        id: combine
+        run: |
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
+            URL_PAIRS="${{ steps.extract.outputs.url_pairs }}"
+          else
+            URL_PAIRS="${{ steps.manual.outputs.url_pairs }}"
+          fi
+          
+          echo "Combined URL pairs: $URL_PAIRS"
+          
+          # Final validation check
+          if [ -z "$URL_PAIRS" ] || [ "$URL_PAIRS" == "[]" ]; then
+            echo "Warning: Empty URL pairs. Using default values."
+            URL_PAIRS='[{"brand":"default","pageType":"page","baseline":"https://example.com","modified":"https://example.com"}]'
+          fi
+          
+          echo "url_pairs=$URL_PAIRS" >> $GITHUB_OUTPUT
+
+      - name: Validate URL Pairs
+        if: github.event_name == 'pull_request'
+        run: |
+          URL_PAIRS='${{ steps.combine.outputs.url_pairs }}'
+          
+          echo "Final URL pairs to be used: $URL_PAIRS"
+          
+          if [ "$URL_PAIRS" == "[]" ]; then
+            echo "::warning::No valid URL pairs found in PR description. Please format your PR description with sections like:"
+            echo "::warning::## Visual Test"
+            echo "::warning::- Brand: BrandName"
+            echo "::warning::- PageType: HomePage"
+            echo "::warning::- Baseline: https://baseline-url.com"
+            echo "::warning::- Modified: https://modified-url.com"
+          else
+            echo "Valid URL pairs found. Visual tests will run."
+          fi
+
+  debug-matrix:
+    needs: extract-urls
+    runs-on: ubuntu-latest
+    steps:
+      - name: Debug matrix input
+        run: |
+          echo "Debug URL pairs from previous job:"
+          echo '${{ needs.extract-urls.outputs.url_pairs }}'
+          
+          # Check if the JSON is valid using jq
+          if echo '${{ needs.extract-urls.outputs.url_pairs }}' | jq empty; then
+            echo "JSON is valid according to jq"
+          else
+            echo "JSON is invalid according to jq"
+            
+            # Get raw JSON
+            RAW_JSON='${{ needs.extract-urls.outputs.url_pairs }}'
+            
+            # Try to count how many pairs we need to extract (look for 'brand:' occurrences)
+            PAIR_COUNT=$(echo "$RAW_JSON" | grep -o 'brand:' | wc -l)
+            
+            if [ "$PAIR_COUNT" -gt 0 ]; then
+              echo "Detected $PAIR_COUNT URL pairs in malformed JSON"
+              
+              # Direct extraction approach
+              FIXED_JSON="["
+              
+              # Process each pair
+              for (( i=1; i<=$PAIR_COUNT; i++ )); do
+                # Extract values using grep with position markers
+                BRAND=$(echo "$RAW_JSON" | grep -o 'brand:[^,}]*' | sed -n "${i}p" | sed 's/brand://')
+                PAGETYPE=$(echo "$RAW_JSON" | grep -o 'pageType:[^,}]*' | sed -n "${i}p" | sed 's/pageType://')
+                BASELINE=$(echo "$RAW_JSON" | grep -o 'baseline:[^,}]*' | sed -n "${i}p" | sed 's/baseline://')
+                MODIFIED=$(echo "$RAW_JSON" | grep -o 'modified:[^,}]*' | sed -n "${i}p" | sed 's/modified://')
+                
+                # Trim whitespace
+                BRAND=$(echo "$BRAND" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+                PAGETYPE=$(echo "$PAGETYPE" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+                BASELINE=$(echo "$BASELINE" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+                MODIFIED=$(echo "$MODIFIED" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+                
+                # Add comma if not first entry
+                if [ $i -gt 1 ]; then
+                  FIXED_JSON="${FIXED_JSON},"
+                fi
+                
+                # Build JSON entry
+                FIXED_JSON="${FIXED_JSON}{\"brand\":\"${BRAND}\",\"pageType\":\"${PAGETYPE}\",\"baseline\":\"${BASELINE}\",\"modified\":\"${MODIFIED}\"}"
+              done
+              
+              # Close JSON array
+              FIXED_JSON="${FIXED_JSON}]"
+              
+              echo "Reconstructed JSON: $FIXED_JSON"
+              
+              # Validate the rebuilt JSON
+              if echo "$FIXED_JSON" | jq empty; then
+                echo "Successfully rebuilt valid JSON"
+                echo "$FIXED_JSON" > fixed_json.txt
+              else
+                echo "Failed to create valid JSON, using fallback"
+                FIXED_JSON='[{"brand":"default","pageType":"page","baseline":"https://example.com","modified":"https://example.com"}]'
+                echo "$FIXED_JSON" > fixed_json.txt
+              fi
+            else
+              echo "No 'brand:' patterns found in JSON"
+              FIXED_JSON='[{"brand":"default","pageType":"page","baseline":"https://example.com","modified":"https://example.com"}]'
+              echo "$FIXED_JSON" > fixed_json.txt
+            fi
+          fi
+          
+          # Final display of JSON (from file if it was fixed, or directly if already valid)
+          if [ -f fixed_json.txt ]; then
+            cat fixed_json.txt | jq '.'
+          else
+            echo '${{ needs.extract-urls.outputs.url_pairs }}' | jq '.'
+          fi
+
+  # Use a job to create matrix inputs
+  prepare-matrix:
+    needs: [extract-urls, debug-matrix]
+    runs-on: ubuntu-latest
+    outputs:
+      matrix-json: ${{ steps.set-matrix.outputs.matrix-json }}
+    steps:
+      - name: Set matrix values
+        id: set-matrix
+        run: |
+          PAIRS='${{ needs.extract-urls.outputs.url_pairs }}'
+          
+          # Try to properly format JSON if it's malformed
+          if ! echo "$PAIRS" | jq empty; then
+            echo "Attempting to fix malformed JSON..."
+            
+            # Try to count how many pairs we need to extract
+            PAIR_COUNT=$(echo "$PAIRS" | grep -o 'brand:' | wc -l)
+            
+            if [ "$PAIR_COUNT" -gt 0 ]; then
+              echo "Detected $PAIR_COUNT URL pairs in malformed JSON"
+              
+              # Direct extraction approach
+              FIXED_JSON="["
+              
+              # Process each pair
+              for (( i=1; i<=$PAIR_COUNT; i++ )); do
+                # Extract values using grep with position markers
+                BRAND=$(echo "$PAIRS" | grep -o 'brand:[^,}]*' | sed -n "${i}p" | sed 's/brand://')
+                PAGETYPE=$(echo "$PAIRS" | grep -o 'pageType:[^,}]*' | sed -n "${i}p" | sed 's/pageType://')
+                BASELINE=$(echo "$PAIRS" | grep -o 'baseline:[^,}]*' | sed -n "${i}p" | sed 's/baseline://')
+                MODIFIED=$(echo "$PAIRS" | grep -o 'modified:[^,}]*' | sed -n "${i}p" | sed 's/modified://')
+                
+                # Trim whitespace
+                BRAND=$(echo "$BRAND" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+                PAGETYPE=$(echo "$PAGETYPE" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+                BASELINE=$(echo "$BASELINE" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+                MODIFIED=$(echo "$MODIFIED" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+                
+                # Add comma if not first entry
+                if [ $i -gt 1 ]; then
+                  FIXED_JSON="${FIXED_JSON},"
+                fi
+                
+                # Build JSON entry
+                FIXED_JSON="${FIXED_JSON}{\"brand\":\"${BRAND}\",\"pageType\":\"${PAGETYPE}\",\"baseline\":\"${BASELINE}\",\"modified\":\"${MODIFIED}\"}"
+              done
+              
+              # Close JSON array
+              FIXED_JSON="${FIXED_JSON}]"
+              
+              echo "Reconstructed JSON: $FIXED_JSON"
+              
+              # Validate the rebuilt JSON
+              if echo "$FIXED_JSON" | jq empty; then
+                echo "Successfully rebuilt valid JSON"
+                PAIRS="$FIXED_JSON"
+              else
+                echo "Failed to create valid JSON, using fallback"
+                PAIRS='[{"brand":"default","pageType":"page","baseline":"https://example.com","modified":"https://example.com"}]'
+              fi
+            else
+              echo "No 'brand:' patterns found in JSON"
+              PAIRS='[{"brand":"default","pageType":"page","baseline":"https://example.com","modified":"https://example.com"}]'
+            fi
+          fi
+          
+          # Create a valid JSON object for the matrix
+          MATRIX_JSON=$(echo "{ \"pair\": $PAIRS, \"viewport\": [\"desktop\", \"tablet\", \"mobile\"] }")
+          
+          # Verify output
+          echo "Matrix JSON:"
+          echo "$MATRIX_JSON"
+          
+          # Final safety check
+          if ! echo "$MATRIX_JSON" | jq empty; then
+            echo "ERROR: Generated matrix JSON is invalid"
+            # Provide a safer fallback
+            MATRIX_JSON='{"pair":[{"brand":"default","pageType":"page","baseline":"https://example.com","modified":"https://example.com"}],"viewport":["desktop","tablet","mobile"]}'
+          fi
+          
+          # Output for next job
+          echo "matrix-json=$MATRIX_JSON" >> $GITHUB_OUTPUT
+
+  visual-test:
+    needs: [prepare-matrix]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      max-parallel: 6
+      matrix: ${{ fromJson(needs.prepare-matrix.outputs.matrix-json) }}
+    
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: 'npm'
+          cache-dependency-path: '**/package-lock.json'
+
+      - name: Install Dependencies
+        run: |
+          npm ci || npm install
+          npm install -g cypress
+
+      - name: Print Test Information
+        run: |
+          echo "Running visual test for:"
+          echo "Brand: ${{ matrix.pair.brand }}"
+          echo "Page Type: ${{ matrix.pair.pageType }}"
+          echo "Viewport: ${{ matrix.viewport }}"
+          echo "Baseline URL: ${{ matrix.pair.baseline }}"
+          echo "Modified URL: ${{ matrix.pair.modified }}"
+
+      - name: Run Cypress Tests
+        id: cypress
+        continue-on-error: true
+        env:
+          CYPRESS_MEMORY: 4096
+          NODE_OPTIONS: "--max-old-space-size=4096"
+        run: |
+          echo "Running ${{ matrix.viewport }} regression test..."
+          
+          # Create cypress.env.json file with the required environment variables
+          # Unescape any escaped characters in the brand and page type
+          BRAND=$(echo "${{ matrix.pair.brand }}" | sed 's/\\&/\&/g; s/\\"/"/g')
+          PAGE_TYPE=$(echo "${{ matrix.pair.pageType }}" | sed 's/\\&/\&/g; s/\\"/"/g')
+          
+          cat > cypress.env.json << EOL
+          {
+            "Brandcode": "$BRAND",
+            "PageType": "$PAGE_TYPE",
+            "URL_1": "${{ matrix.pair.baseline }}",
+            "URL_2": "${{ matrix.pair.modified }}"
+          }
+          EOL
+          
+          echo "Created cypress.env.json with content:"
+          cat cypress.env.json
+          
+          # Create logs directory if it doesn't exist
+          mkdir -p cypress/logs
+          
+          # Run the appropriate test file based on viewport
+          npx cypress run --browser chrome --headless --spec "cypress/e2e/regression-${{ matrix.viewport }}.cy.js" --config video=false,screenshotOnRunFailure=true | tee cypress/logs/regression-${{ matrix.viewport }}.log
+          
+          TEST_EXIT_CODE=$?
+          echo "Test exit code: $TEST_EXIT_CODE"
+          
+          # Check if diff images were created (indicating visual differences)
+          DIFF_COUNT=$(find cypress/screenshots -name "*diff*.png" | wc -l)
+          if [ $DIFF_COUNT -gt 0 ]; then
+            echo "Visual differences detected in $DIFF_COUNT screenshots"
+            echo "has_diffs=true" >> $GITHUB_OUTPUT
+          else
+            echo "No visual differences detected"
+            echo "has_diffs=false" >> $GITHUB_OUTPUT
+          fi
+          
+          # Extract mismatch percentage from logs if available
+          # Look for patterns like "Mismatch: 12.34%" or "Mismatch detected: 12.34% difference"
+          MISMATCH_PERCENTAGE=$(grep -o "Mismatch.*[0-9]\+\.[0-9]\+%" cypress/logs/regression-${{ matrix.viewport }}.log 2>/dev/null | grep -o "[0-9]\+\.[0-9]\+%" | tail -1 || echo "Unknown")
+          
+          # If we didn't find a percentage, try another pattern
+          if [ "$MISMATCH_PERCENTAGE" == "Unknown" ]; then
+            MISMATCH_PERCENTAGE=$(grep -o "difference.*[0-9]\+\.[0-9]\+%" cypress/logs/regression-${{ matrix.viewport }}.log 2>/dev/null | grep -o "[0-9]\+\.[0-9]\+%" | tail -1 || echo "Unknown")
+          fi
+          
+          echo "Detected mismatch percentage: $MISMATCH_PERCENTAGE"
+          
+          # Create result summary
+          mkdir -p test-results
+          echo "{
+            \"brand\": \"${{ matrix.pair.brand }}\",
+            \"pageType\": \"${{ matrix.pair.pageType }}\",
+            \"viewport\": \"${{ matrix.viewport }}\",
+            \"baseline\": \"${{ matrix.pair.baseline }}\",
+            \"modified\": \"${{ matrix.pair.modified }}\",
+            \"status\": \"$([ $TEST_EXIT_CODE -eq 0 ] && echo 'success' || echo 'failure')\",
+            \"has_diffs\": \"$([ $DIFF_COUNT -gt 0 ] && echo 'true' || echo 'false')\",
+            \"mismatch\": \"$MISMATCH_PERCENTAGE\"
+          }" > test-results/result-${{ matrix.pair.brand }}-${{ matrix.pair.pageType }}-${{ matrix.viewport }}.json
+          
+          # Log test completion
+          echo "✅ Test for ${{ matrix.viewport }} viewport completed, results saved to test-results/result-${{ matrix.pair.brand }}-${{ matrix.pair.pageType }}-${{ matrix.viewport }}.json"
+
+      - name: Verify Test Completion
+        run: |
+          echo "Verifying test completion for ${{ matrix.viewport }} viewport..."
+          if [ -f "test-results/result-${{ matrix.pair.brand }}-${{ matrix.pair.pageType }}-${{ matrix.viewport }}.json" ]; then
+            echo "✅ Test for ${{ matrix.viewport }} viewport completed successfully"
+            cat "test-results/result-${{ matrix.pair.brand }}-${{ matrix.pair.pageType }}-${{ matrix.viewport }}.json"
+          else
+            echo "❌ Test results not found for ${{ matrix.viewport }} viewport"
+            exit 1
+          fi
+
+      - name: Upload Screenshots
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-test-${{ matrix.pair.brand }}-${{ matrix.pair.pageType }}-${{ matrix.viewport }}
+          path: |
+            cypress/screenshots/**/*.png
+            test-results/*.json
+          retention-days: 14
+
+  verify-viewport-coverage:
+    needs: visual-test
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Download Test Results
+        uses: actions/download-artifact@v4
+        with:
+          path: ./artifacts
+
+      - name: Verify All Viewport Tests
+        run: |
+          echo "Verifying tests for all viewports..."
+          
+          # Check each required viewport
+          for viewport in mobile tablet desktop; do
+            COUNT=$(find ./artifacts -name "result-*-${viewport}.json" | wc -l)
+            if [ $COUNT -eq 0 ]; then
+              echo "::warning::⚠️ No test results found for $viewport viewport!"
+              MISSING_VIEWPORTS="${MISSING_VIEWPORTS} ${viewport}"
+            else
+              echo "✅ Found $COUNT test result(s) for $viewport viewport"
+            fi
+          done
+          
+          # Exit with error if any viewport is missing
+          if [ ! -z "$MISSING_VIEWPORTS" ]; then
+            echo "::error::❌ Missing test results for viewports:${MISSING_VIEWPORTS}"
+            echo "missing_viewports=${MISSING_VIEWPORTS}" >> $GITHUB_OUTPUT
+            exit 1
+          else
+            echo "✅ All viewport tests (mobile, tablet, desktop) completed successfully!"
+          fi
+
+  report-results:
+    needs: [visual-test, verify-viewport-coverage]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Download Test Results
+        uses: actions/download-artifact@v4
+        with:
+          path: ./artifacts
+          pattern: visual-test-*
+          merge-multiple: true
+
+      - name: Generate Report
+        id: report
+        run: |
+          echo "### 🖼️ Visual Comparison Test Results" > report.md
+          echo "" >> report.md
+          
+          # Check if we have any results
+          if [ -z "$(find ./artifacts -name "result-*.json" 2>/dev/null)" ]; then
+            echo "No test results found. Please ensure your PR description includes visual test configurations in the correct format:" >> report.md
+            echo "" >> report.md
+            echo "```" >> report.md
+            echo "## Visual Test" >> report.md
+            echo "- Brand: BrandName" >> report.md
+            echo "- PageType: HomePage" >> report.md
+            echo "- Baseline: https://baseline-url.com" >> report.md
+            echo "- Modified: https://modified-url.com" >> report.md
+            echo "```" >> report.md
+            
+            echo "overall_status=skipped" >> $GITHUB_OUTPUT
+            cat report.md
+            exit 0
+          fi
+          
+          # Check for completeness of viewport tests
+          DESKTOP_COUNT=$(find ./artifacts -name "result-*-desktop.json" | wc -l)
+          TABLET_COUNT=$(find ./artifacts -name "result-*-tablet.json" | wc -l)
+          MOBILE_COUNT=$(find ./artifacts -name "result-*-mobile.json" | wc -l)
+          
+          # First add the status message BEFORE the table
+          if [ $DESKTOP_COUNT -eq 0 ] || [ $TABLET_COUNT -eq 0 ] || [ $MOBILE_COUNT -eq 0 ]; then
+            echo "⚠️ **Warning: Not all viewport tests completed!**" >> report.md
+            echo "" >> report.md
+            [ $DESKTOP_COUNT -eq 0 ] && echo "- ❌ Desktop tests missing" >> report.md
+            [ $TABLET_COUNT -eq 0 ] && echo "- ❌ Tablet tests missing" >> report.md
+            [ $MOBILE_COUNT -eq 0 ] && echo "- ❌ Mobile tests missing" >> report.md
+            echo "" >> report.md
+            OVERALL_STATUS="failure"
+          else
+            echo "✅ **All viewport tests completed successfully!**" >> report.md
+            echo "" >> report.md
+            OVERALL_STATUS="success"
+          fi
+          
+          # Add a note about match percentage threshold
+          echo "> Note: Tests with a match percentage below 85% are automatically marked as failed, regardless of test execution status." >> report.md
+          echo "" >> report.md
+          
+          # Now add the table with separate Status icon column
+          echo "| Pass/Fail | Brand | Page Type | Viewport | Baseline | Modified | Match % | Differences |" >> report.md
+          echo "|:------:|-------|-----------|----------|----------|----------|---------|------------|" >> report.md
+          
+          # Process all result files for table rows
+          for resultFile in $(find ./artifacts -name "result-*.json"); do
+            BRAND=$(jq -r '.brand' "$resultFile")
+            PAGE_TYPE=$(jq -r '.pageType' "$resultFile")
+            VIEWPORT=$(jq -r '.viewport' "$resultFile")
+            BASELINE=$(jq -r '.baseline' "$resultFile")
+            MODIFIED=$(jq -r '.modified' "$resultFile")
+            STATUS=$(jq -r '.status' "$resultFile")
+            HAS_DIFFS=$(jq -r '.has_diffs' "$resultFile")
+            MISMATCH=$(jq -r '.mismatch' "$resultFile")
+            
+            # Calculate match percentage
+            if [[ "$MISMATCH" == "Unknown" ]]; then
+              MATCH_PERCENT="N/A"
+              MATCH_VALUE="0"
+            else
+              # Remove the % sign from mismatch if present
+              MISMATCH_VALUE=${MISMATCH//%/}
+              # Check if it's a valid number
+              if [[ "$MISMATCH_VALUE" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
+                MATCH_VALUE=$(awk "BEGIN {printf \"%.2f\", 100-$MISMATCH_VALUE}")
+                MATCH_PERCENT="${MATCH_VALUE}%"
+              else
+                MATCH_PERCENT="N/A"
+                MATCH_VALUE="0"
+              fi
+            fi
+            
+            # Set icon and status based on test results
+            if [ "$STATUS" == "success" ] && ([ "$MATCH_VALUE" == "N/A" ] || [ $(awk "BEGIN {print ($MATCH_VALUE >= 85)}") -eq 1 ]); then
+                STATUS_ICON="✓"
+                STATUS_HTML="<span>✅</span>"
+                STATUS_TEXT="Passed"
+                STATUS_BADGE="![Passed](https://img.shields.io/badge/-Passed-green)"
+            else
+              STATUS_ICON="✗"
+              STATUS_HTML="<span>❌</span>"
+              STATUS_TEXT="Failed"
+              STATUS_BADGE="![Failed](https://img.shields.io/badge/-Failed-red)"
+              OVERALL_STATUS="failure"
+            fi
+            
+            # Get artifact name for linking
+            ARTIFACT_NAME="visual-test-${BRAND}-${PAGE_TYPE}-${VIEWPORT}"
+            
+            # Ensure proper cell formatting with pipes at beginning and end
+            echo "| $STATUS_BADGE | $BRAND | $PAGE_TYPE | $VIEWPORT | [Link]($BASELINE) | [Link]($MODIFIED) | $MATCH_PERCENT | [View Screenshots](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}) |" >> report.md
+          done
+          
+          echo "" >> report.md
+          echo "---" >> report.md
+          echo "📎 **[Download All Screenshots](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})**" >> report.md
+          
+          if [ "$OVERALL_STATUS" == "success" ]; then
+            echo "overall_status=success" >> $GITHUB_OUTPUT
+          else
+            echo "overall_status=failure" >> $GITHUB_OUTPUT
+          fi
+          
+          echo "Report file size: $(wc -c < report.md) bytes"
+          
+          # Verify the report has proper markdown formatting
+          # Check for table formatting
+          TABLE_HEADER_COUNT=$(grep -c "^|.*|$" report.md)
+          if [ "$TABLE_HEADER_COUNT" -lt 2 ]; then
+            echo "Warning: Table might not be properly formatted. Found $TABLE_HEADER_COUNT table rows."
+            # Add a fallback simple report if table formatting is missing
+            echo "### 🖼️ Visual Comparison Test Results (Fallback Format)" > fallback_report.md
+            echo "" >> fallback_report.md
+            echo "The report could not be properly formatted as a table. Here's a simplified version:" >> fallback_report.md
+            echo "" >> fallback_report.md
+            
+            # Add the note about match percentage threshold
+            echo "> Note: Tests with a match percentage below 85% are automatically marked as failed, regardless of test execution status." >> fallback_report.md
+            echo "" >> fallback_report.md
+            
+            # Add a simple list of results for fallback report
+            for resultFile in $(find ./artifacts -name "result-*.json"); do
+              BRAND=$(jq -r '.brand' "$resultFile")
+              PAGE_TYPE=$(jq -r '.pageType' "$resultFile")
+              VIEWPORT=$(jq -r '.viewport' "$resultFile")
+              STATUS=$(jq -r '.status' "$resultFile")
+              HAS_DIFFS=$(jq -r '.has_diffs' "$resultFile")
+              MISMATCH=$(jq -r '.mismatch' "$resultFile")
+              
+              # Calculate match percentage
+              if [[ "$MISMATCH" == "Unknown" ]]; then
+                MATCH_PERCENT="N/A"
+                MATCH_VALUE="0"
+              else
+                # Remove the % sign from mismatch if present
+                MISMATCH_VALUE=${MISMATCH//%/}
+                # Check if it's a valid number
+                if [[ "$MISMATCH_VALUE" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
+                  MATCH_VALUE=$(awk "BEGIN {printf \"%.2f\", 100-$MISMATCH_VALUE}")
+                  MATCH_PERCENT="${MATCH_VALUE}%"
+                else
+                  MATCH_PERCENT="N/A"
+                  MATCH_VALUE="0"
+                fi
+              fi
+              
+              # Set status indicators
+              if [ "$STATUS" == "success" ] && ([ "$MATCH_VALUE" == "N/A" ] || [ $(awk "BEGIN {print ($MATCH_VALUE >= 85)}") -eq 1 ]); then
+                STATUS_BADGE="![Passed](https://img.shields.io/badge/-Passed-green)"
+                STATUS_TEXT="Passed"
+              else
+                STATUS_BADGE="![Failed](https://img.shields.io/badge/-Failed-red)"
+                STATUS_TEXT="Failed"
+              fi
+              
+              echo "- $STATUS_BADGE **${BRAND} - ${PAGE_TYPE} - ${VIEWPORT}**: ${STATUS_TEXT} (Match: ${MATCH_PERCENT})" >> fallback_report.md
+            done
+            
+            echo "" >> fallback_report.md
+            echo "📎 **[View Full Results](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})**" >> fallback_report.md
+            
+            # Use the fallback report instead
+            cp fallback_report.md report.md
+            echo "Using fallback report format instead of table"
+          else
+            echo "Report table format looks valid. Found $TABLE_HEADER_COUNT table rows."
+          fi
+          
+          # Store report length for output
+          REPORT_LENGTH=$(wc -c < report.md)
+          echo "report_length=$REPORT_LENGTH" >> $GITHUB_OUTPUT
+          echo "overall_status=$OVERALL_STATUS" >> $GITHUB_OUTPUT
+          
+          echo "Report is ready for commenting"
+
+      - name: Verify Report Formatting
+        if: github.event_name == 'pull_request'
+        run: |
+          echo "Performing report diagnostics before posting..."
+          
+          # Check report file presence and size
+          if [ ! -f "report.md" ]; then
+            echo "ERROR: report.md file is missing!"
+            exit 1
+          fi
+          
+          REPORT_SIZE=$(wc -c < report.md)
+          echo "Report size: $REPORT_SIZE bytes"
+          
+          # Check if report is empty
+          if [ "$REPORT_SIZE" -lt 10 ]; then
+            echo "ERROR: Report appears to be empty or too small"
+            exit 1
+          fi
+          
+          # Preview report content (truncated)
+          echo "Report content preview (first 20 lines):"
+          head -n 20 report.md
+          echo "..."
+          
+          # Validate table structure
+          TABLE_ROWS=$(grep -c "^|" report.md)
+          echo "Table rows found: $TABLE_ROWS"
+          
+          # Check for markdown formatting elements
+          echo "Markdown headers: $(grep -c "^#" report.md)"
+          echo "Markdown tables: $(grep -c "^|.*|$" report.md)"
+          echo "Markdown links: $(grep -c "\[.*\](.*)" report.md)"
+          
+          # Create a JSON test payload to verify escaping
+          echo "Testing JSON payload creation..."
+          SAMPLE_CONTENT=$(head -n 10 report.md)
+          ESCAPED_SAMPLE=$(echo "$SAMPLE_CONTENT" | awk '{printf "%s\\n", $0}' | sed 's/"/\\"/g')
+          echo "{\"body\": \"$ESCAPED_SAMPLE\"}" > test_payload.json
+          
+          # Validate JSON payload
+          if jq empty test_payload.json 2>/dev/null; then
+            echo "✅ JSON payload format is valid"
+          else
+            echo "❌ JSON payload format is invalid"
+            echo "This may cause issues with the comment posting"
+          fi
+          
+          echo "Report diagnostics completed"
+
+      - name: Debug GitHub Token
+        if: github.event_name == 'pull_request'
+        run: |
+          echo "Checking permissions for GitHub token..."
+          echo "GITHUB_TOKEN permissions: ${{ toJson(github.token) }}"
+          echo "PR number: ${{ github.event.pull_request.number }}"
+          echo "Repo: ${{ github.repository }}"
+          echo "Event name: ${{ github.event_name }}"
+
+      - name: Comment on PR with GitHub Script
+        id: comment-with-github-script
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v6
+        continue-on-error: true
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            try {
+              const fs = require('fs');
+              console.log('Reading report.md file');
+              const reportContent = fs.readFileSync('report.md', 'utf8');
+              
+              // Ensure all special Markdown characters are properly preserved
+              console.log(`Attempting to post comment to PR #${context.issue.number}`);
+              console.log(`Comment length: ${reportContent.length} characters`);
+              
+              if (reportContent.length > 65000) {
+                console.log('Warning: Comment is very large and may be truncated by GitHub');
+                // If too large, truncate and add a note
+                const truncatedContent = reportContent.substring(0, 65000) + 
+                  "\n\n**Note: This report was truncated because it exceeded GitHub's comment size limit.**" +
+                  "\n\n📎 **[View Full Results](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})** 📎";
+                
+                await github.rest.issues.createComment({
+                  issue_number: context.issue.number,
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  body: truncatedContent
+                });
+                console.log('Posted truncated comment successfully');
+              } else {
+                // Post the full comment
+                const result = await github.rest.issues.createComment({
+                  issue_number: context.issue.number,
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  body: reportContent
+                });
+                console.log(`Comment posted successfully with ID: ${result.data.id}`);
+              }
+            } catch (error) {
+              console.error('Error posting comment with GitHub Script:');
+              console.error(error.message);
+              if (error.stack) console.error(error.stack);
+              
+              // Write error details to file for debugging
+              fs.writeFileSync('github-script-error.log', 
+                `Error: ${error.message}\n\nStack: ${error.stack || 'No stack trace available'}`);
+              
+              // Throw the error to trigger the fallback mechanism
+              throw error;
+            }
+
+      # Fallback comment mechanism if the github-script approach fails
+      - name: Comment on PR (Fallback)
+        id: comment-fallback
+        if: github.event_name == 'pull_request' && steps.comment-with-github-script.outcome == 'failure'
+        uses: peter-evans/create-or-update-comment@v3
+        continue-on-error: true
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          body-file: report.md
+          token: ${{ secrets.GITHUB_TOKEN }}
+          edit-mode: replace
+
+      # Final fallback using direct REST API call with simplified content
+      - name: Comment on PR (Fallback using REST API)
+        if: failure() && github.event_name == 'pull_request'
+        run: |
+          # Read the report content
+          REPORT_CONTENT=$(cat report.md)
+          
+          # Properly escape the content for JSON
+          # Replace newlines with \n and escape double quotes
+          ESCAPED_CONTENT=$(echo "$REPORT_CONTENT" | awk '{printf "%s\\n", $0}' | sed 's/"/\\"/g')
+          
+          # Create a temporary JSON file for the payload
+          echo "{" > payload.json
+          echo "  \"body\": \"$ESCAPED_CONTENT\"" >> payload.json
+          echo "}" >> payload.json
+          
+          echo "Payload preview (first 200 chars):"
+          head -c 200 payload.json
+          echo "..."
+          
+          # Try posting using the GitHub REST API
+          curl -X POST \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            -H "Content-Type: application/json" \
+            --data @payload.json \
+            "https://api.github.com/repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments"
+          
+          echo "Comment posted using GitHub REST API fallback"
+
+      - name: Set PR Status
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const overallStatus = '${{ steps.report.outputs.overall_status }}';
+            
+            await github.rest.checks.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              name: 'Visual Comparison Tests',
+              head_sha: context.payload.pull_request.head.sha,
+              status: 'completed',
+              conclusion: overallStatus === 'skipped' ? 'neutral' : overallStatus,
+              output: {
+                title: overallStatus === 'success' ? 'Visual tests passed' : 
+                       overallStatus === 'skipped' ? 'No visual tests run' : 'Visual differences detected',
+                summary: 'See PR comment for details and screenshots'
+              }
+            }); 

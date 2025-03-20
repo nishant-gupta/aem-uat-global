@@ -25,3 +25,7 @@
   aspect-ratio: 4 / 3;
   object-fit: cover;
 }
+
+.cards > ul > li:hover {
+  background-color: #f0f0f0;
+}
